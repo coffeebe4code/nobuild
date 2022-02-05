@@ -46,26 +46,16 @@ typedef int Fd;
     body;                                                                      \
   }
 
-#define FOREACH_FEATURE(elem, array, count, body)                              \
-  for (size_t elem_##index = 0; elem_##index < count; ++elem_##index) {        \
-    Cstr_Array elem = array[elem_##index];                                     \
-    body;                                                                      \
-  }
-
 typedef const char *Cstr;
-
 static int test_result_status = 0;
-
 typedef struct {
   short failure_total;
   short passed_total;
 } result_t;
-
 static struct option flags[] = {{"file", required_argument, 0, 'f'},
                                 {"release", no_argument, 0, 'r'},
                                 {"clean", no_argument, 0, 'c'},
                                 {"debug", no_argument, 0, 'd'}};
-
 static result_t results = {0};
 
 int cstr_ends_with(Cstr cstr, Cstr postfix);
@@ -91,13 +81,6 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs);
 #define PATH(...) JOIN(PATH_SEP, __VA_ARGS__)
 
 typedef struct {
-  Fd read;
-  Fd write;
-} Pipe;
-
-Pipe pipe_make(void);
-
-typedef struct {
   Cstr_Array line;
 } Cmd;
 
@@ -108,6 +91,7 @@ void fd_close(Fd fd);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 void handle_args(int argc, char **argv);
+void make_feature(Cstr val);
 void write_report();
 void create_folders();
 Cstr parse_feature_from_path();
@@ -204,7 +188,7 @@ typedef struct {
     }                                                                          \
   } while (0)
 
-#define NEW_FEATURE(...)                                                       \
+#define ADD_FEATURE(...)                                                       \
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
@@ -245,7 +229,7 @@ typedef struct {
 #define DESCRIBE(thing)                                                        \
   do {                                                                         \
     INFO("DESCRIBE: %s => %s", __FILE__, thing);                               \
-    NEW_FEATURE(thing);                                                        \
+    ADD_FEATURE(thing);                                                        \
   } while (0)
 
 #define SHOULDF(message, func)                                                 \
@@ -267,52 +251,8 @@ typedef struct {
     return results.failure_total;                                              \
   } while (0)
 
-typedef enum {
-  CHAIN_TOKEN_END = 0,
-  CHAIN_TOKEN_IN,
-  CHAIN_TOKEN_OUT,
-  CHAIN_TOKEN_CMD
-} Chain_Token_Type;
-
-// A single token for the CHAIN(...) DSL syntax
-typedef struct {
-  Chain_Token_Type type;
-  Cstr_Array args;
-} Chain_Token;
-
-#define IN(path)                                                               \
-  (Chain_Token) { .type = CHAIN_TOKEN_IN, .args = cstr_array_make(path, NULL) }
-
-#define OUT(path)                                                              \
-  (Chain_Token) { .type = CHAIN_TOKEN_OUT, .args = cstr_array_make(path, NULL) }
-
-#define CHAIN_CMD(...)                                                         \
-  (Chain_Token) {                                                              \
-    .type = CHAIN_TOKEN_CMD, .args = cstr_array_make(__VA_ARGS__, NULL)        \
-  }
-
-typedef struct {
-  Cstr input_filepath;
-  Cmd_Array cmds;
-  Cstr output_filepath;
-} Chain;
-
-Chain chain_build_from_tokens(Chain_Token first, ...);
-void chain_run_sync(Chain chain);
-void chain_echo(Chain chain);
-
-#define CHAIN(...)                                                             \
-  do {                                                                         \
-    Chain chain = chain_build_from_tokens(__VA_ARGS__, (Chain_Token){0});      \
-    chain_echo(chain);                                                         \
-    chain_run_sync(chain);                                                     \
-  } while (0)
-
 int path_is_dir(Cstr path);
 #define IS_DIR(path) path_is_dir(path)
-
-int path_exists(Cstr path);
-#define PATH_EXISTS(path) path_exists(path)
 
 void path_mkdirs(Cstr_Array path);
 #define MKDIRS(...)                                                            \
@@ -350,11 +290,9 @@ void path_rm(Cstr path);
         body;                                                                  \
       }                                                                        \
     }                                                                          \
-                                                                               \
     if (errno > 0) {                                                           \
       PANIC("could not read directory %s: %s", dirpath, strerror(errno));      \
     }                                                                          \
-                                                                               \
     closedir(dir);                                                             \
   } while (0)
 
@@ -376,8 +314,6 @@ void FAILLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void DESCLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-
-char *shift_args(int *argc, char ***argv);
 
 #endif // NOBUILD_H_
 
@@ -426,8 +362,7 @@ int is_first_run() {
 }
 
 void create_folders() {
-  MKDIRS("target");
-  MKDIRS("target/nobuild");
+  MKDIRS("target", "nobuild");
   MKDIRS("obj");
   for (int i = 0; i < feature_count; i++) {
     MKDIRS(CONCAT("obj/", features[i].elems[0]));
@@ -447,11 +382,12 @@ void update_results() {
 }
 
 void add_feature(Cstr_Array val) {
+  INFO("FEATURE: %s", val.elems[0]);
   if (features == NULL) {
     features = malloc(sizeof(Cstr_Array));
     feature_count++;
   } else {
-    features = realloc(features, ++feature_count);
+    features = realloc(features, sizeof(Cstr_Array) * ++feature_count);
   }
   if (features == NULL || val.count == 0) {
     PANIC("could not allocate memory: %s", strerror(errno));
@@ -527,19 +463,6 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
   return result;
 }
 
-Pipe pipe_make(void) {
-  Pipe pip = {0};
-
-  Fd pipefd[2];
-  if (pipe(pipefd) < 0) {
-    PANIC("Could not create pipe: %s", strerror(errno));
-  }
-
-  pip.read = pipefd[0];
-  pip.write = pipefd[1];
-  return pip;
-}
-
 Fd fd_open_for_read(Cstr path) {
   Fd result = open(path, O_RDONLY);
   if (result < 0) {
@@ -566,45 +489,75 @@ void write_report(Cstr file) {
 }
 
 void handle_args(int argc, char **argv) {
-  char opt_char;
+  int opt_char = -1;
+  int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "c:f:rd", flags, &option_index)) !=
-         -1) {
-    switch (opt_char) {
-    case 'c':
+  INFO("here");
+  while ((opt_char = getopt_long(argc, argv, "h:a:c:f:rd", flags,
+                                 &option_index)) != -1) {
+    found = 1;
+    switch ((int)opt_char) {
+    case 'c': {
       CLEAN();
       break;
-    case 'f':
-      parse_feature_from_path(optarg);
-      break;
-    case 'r':
-      break;
-    case 'd':
+    }
+    case 'f': {
+      // Cstr parsed = parse_feature_from_path(optarg);
       break;
     }
+    case 'r': {
+      CLEAN();
+      break;
+    }
+    case 'd': {
+      break;
+    }
+    case 'a': {
+      make_feature(optarg);
+      break;
+    }
+    case 'h': {
+      break;
+    }
+    default: {
+      break;
+    }
+    }
+  }
+  if (found == 0) {
+    CLEAN();
   }
 }
 
-Cstr parse_feature_from_path(Cstr val) {
-  val = NOEXT(val);
-  size_t n = strlen(val);
-  size_t end;
-  while (n > 0 && val[n - 1] != '/') {
-    n -= 1;
-  }
-  end = n;
-  while (n > 0 && val[n - 1] != '/') {
-    n -= 1;
-  }
+void make_feature(Cstr feature) {
+  CMD("touch", CONCAT("./include/", feature, ".h"));
+  MKDIRS(feature);
+  CMD("touch", CONCAT("./", feature, "/lib.c"));
+  MKDIRS("./tests");
+  CMD("touch", CONCAT("./tests/", feature, ".c"));
+}
 
+Cstr parse_feature_from_path(Cstr val) {
+  Cstr noext = NOEXT(val);
+  size_t n = strlen(noext);
+  size_t end;
+  while (n > 0 && noext[n] != '/') {
+    n -= 1;
+  }
+  n -= 1;
+  end = n;
+  while (n > 0 && noext[n] != '/') {
+    n -= 1;
+  }
+  n += 1;
   if (n > 0) {
-    char *result = malloc(end - n);
-    memcpy(result, &val[n - 1], end - n);
-    result[n - 1] = '\0';
+    char *result = malloc(end - n * sizeof(char));
+    memcpy(result, &noext[n], end - n);
+    result[end - 1] = '\0';
     return result;
   } else {
-    return val;
+    return noext;
   }
 }
 
@@ -679,164 +632,6 @@ Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
 
 void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd, NULL, NULL)); }
 void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd, NULL, NULL)); }
-
-static void chain_set_input_output_files_or_count_cmds(Chain *chain,
-                                                       Chain_Token token) {
-  switch (token.type) {
-  case CHAIN_TOKEN_CMD: {
-    chain->cmds.count += 1;
-  } break;
-
-  case CHAIN_TOKEN_IN: {
-    if (chain->input_filepath) {
-      PANIC("Input file path was already set");
-    }
-
-    chain->input_filepath = token.args.elems[0];
-  } break;
-
-  case CHAIN_TOKEN_OUT: {
-    if (chain->output_filepath) {
-      PANIC("Output file path was already set");
-    }
-
-    chain->output_filepath = token.args.elems[0];
-  } break;
-
-  case CHAIN_TOKEN_END:
-  default: {
-    assert(0 && "unreachable");
-    exit(1);
-  }
-  }
-}
-
-static void chain_push_cmd(Chain *chain, Chain_Token token) {
-  if (token.type == CHAIN_TOKEN_CMD) {
-    chain->cmds.elems[chain->cmds.count++] = (Cmd){.line = token.args};
-  }
-}
-
-Chain chain_build_from_tokens(Chain_Token first, ...) {
-  Chain result = {0};
-
-  chain_set_input_output_files_or_count_cmds(&result, first);
-  va_list args;
-  va_start(args, first);
-  Chain_Token next = va_arg(args, Chain_Token);
-  while (next.type != CHAIN_TOKEN_END) {
-    chain_set_input_output_files_or_count_cmds(&result, next);
-    next = va_arg(args, Chain_Token);
-  }
-  va_end(args);
-
-  result.cmds.elems = malloc(sizeof(result.cmds.elems[0]) * result.cmds.count);
-  if (result.cmds.elems == NULL) {
-    PANIC("could not allocate memory: %s", strerror(errno));
-  }
-  result.cmds.count = 0;
-
-  chain_push_cmd(&result, first);
-
-  va_start(args, first);
-  next = va_arg(args, Chain_Token);
-  while (next.type != CHAIN_TOKEN_END) {
-    chain_push_cmd(&result, next);
-    next = va_arg(args, Chain_Token);
-  }
-  va_end(args);
-
-  return result;
-}
-
-void chain_run_sync(Chain chain) {
-  if (chain.cmds.count == 0) {
-    return;
-  }
-
-  Pid *cpids = malloc(sizeof(Pid) * chain.cmds.count);
-
-  Pipe pip = {0};
-  Fd fdin = 0;
-  Fd *fdprev = NULL;
-
-  if (chain.input_filepath) {
-    fdin = fd_open_for_read(chain.input_filepath);
-    if (fdin < 0) {
-      PANIC("could not open file %s: %s", chain.input_filepath,
-            strerror(errno));
-    }
-    fdprev = &fdin;
-  }
-
-  for (size_t i = 0; i < chain.cmds.count - 1; ++i) {
-    pip = pipe_make();
-
-    cpids[i] = cmd_run_async(chain.cmds.elems[i], fdprev, &pip.write);
-
-    if (fdprev)
-      fd_close(*fdprev);
-    fd_close(pip.write);
-    fdprev = &fdin;
-    fdin = pip.read;
-  }
-
-  {
-    Fd fdout = 0;
-    Fd *fdnext = NULL;
-
-    if (chain.output_filepath) {
-      fdout = fd_open_for_write(chain.output_filepath);
-      if (fdout < 0) {
-        PANIC("could not open file %s: %s", chain.output_filepath,
-              strerror(errno));
-      }
-      fdnext = &fdout;
-    }
-
-    const size_t last = chain.cmds.count - 1;
-    cpids[last] = cmd_run_async(chain.cmds.elems[last], fdprev, fdnext);
-
-    if (fdprev)
-      fd_close(*fdprev);
-    if (fdnext)
-      fd_close(*fdnext);
-  }
-
-  for (size_t i = 0; i < chain.cmds.count; ++i) {
-    pid_wait(cpids[i]);
-  }
-}
-
-void chain_echo(Chain chain) {
-  printf("[INFO] CHAIN:");
-  if (chain.input_filepath) {
-    printf(" %s", chain.input_filepath);
-  }
-
-  FOREACH_ARRAY(Cmd, cmd, chain.cmds, { printf(" |> %s", cmd_show(*cmd)); });
-
-  if (chain.output_filepath) {
-    printf(" |> %s", chain.output_filepath);
-  }
-
-  printf("\n");
-}
-
-int path_exists(Cstr path) {
-  struct stat statbuf = {0};
-  if (stat(path, &statbuf) < 0) {
-    if (errno == ENOENT) {
-      errno = 0;
-      return 0;
-    }
-
-    PANIC("could not retrieve information about file %s: %s", path,
-          strerror(errno));
-  }
-
-  return 1;
-}
 
 int path_is_dir(Cstr path) {
   struct stat statbuf = {0};
@@ -927,22 +722,6 @@ void path_rm(Cstr path) {
   }
 }
 
-int is_path1_modified_after_path2(const char *path1, const char *path2) {
-  struct stat statbuf = {0};
-
-  if (stat(path1, &statbuf) < 0) {
-    PANIC("could not stat %s: %s\n", path1, strerror(errno));
-  }
-  int path1_time = statbuf.st_mtime;
-
-  if (stat(path2, &statbuf) < 0) {
-    PANIC("could not stat %s: %s\n", path2, strerror(errno));
-  }
-  int path2_time = statbuf.st_mtime;
-
-  return path1_time > path2_time;
-}
-
 void VLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args) {
   fprintf(stream, "[%s] ", tag);
   vfprintf(stream, fmt, args);
@@ -988,6 +767,7 @@ void FAILLOG(Cstr fmt, ...) {
   fprintf(stderr, "\n");
   va_end(args);
 }
+
 void RUNLOG(Cstr fmt, ...) {
   va_list args;
   va_start(args, fmt);
@@ -1017,14 +797,6 @@ void PANIC(Cstr fmt, ...) {
   VLOG(stderr, "ERRO", fmt, args);
   va_end(args);
   exit(1);
-}
-
-char *shift_args(int *argc, char ***argv) {
-  assert(*argc > 0);
-  char *result = **argv;
-  *argc -= 1;
-  *argv += 1;
-  return result;
 }
 
 #endif // NOBUILD_IMPLEMENTATION
