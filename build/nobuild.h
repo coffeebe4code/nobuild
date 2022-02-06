@@ -88,6 +88,7 @@ typedef struct {
 Fd fd_open_for_read(Cstr path);
 Fd fd_open_for_write(Cstr path);
 void fd_close(Fd fd);
+void build();
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 void handle_args(int argc, char **argv);
@@ -115,6 +116,11 @@ typedef struct {
   do {                                                                         \
     RM("target");                                                              \
     RM("obj");                                                                 \
+  } while (0)
+
+#define BUILD()                                                                \
+  do {                                                                         \
+    build();                                                                   \
   } while (0)
 
 #define FIRSTRUN()                                                             \
@@ -202,6 +208,7 @@ typedef struct {
       write(fd, "", 1);                                                        \
       close(fd);                                                               \
     }                                                                          \
+    handle_args(argc, argv);                                                   \
   } while (0)
 
 #define RUN(test)                                                              \
@@ -493,10 +500,11 @@ void handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  INFO("here");
+  INFO("handle_args");
   while ((opt_char = getopt_long(argc, argv, "h:a:c:f:rd", flags,
                                  &option_index)) != -1) {
     found = 1;
+    INFO("found");
     switch ((int)opt_char) {
     case 'c': {
       CLEAN();
@@ -526,7 +534,9 @@ void handle_args(int argc, char **argv) {
     }
   }
   if (found == 0) {
-    CLEAN();
+    WARN("No arguments passed to nobuild");
+    WARN("Building all features");
+    BUILD();
   }
 }
 
@@ -579,6 +589,23 @@ void test_pid_wait(Pid pid) {
       PANIC("command process was terminated by %s",
             strsignal(WTERMSIG(wstatus)));
     }
+  }
+}
+
+void build() {
+  for (int i = 0; i < feature_count; i++) {
+    Cmd cmd = {.line = cstr_array_make(
+                   LD, "-r", "-o", CONCAT("./obj/", features[0].elems[0], ".o"),
+                   NULL)};
+    FOREACH_FILE_IN_DIR(file, features[0].elems[0], {
+      Cstr output = CONCAT(PATH(".", CONCAT("obj/", features[0].elems[0], "/")),
+                           NOEXT(file), ".o");
+      CMD(CC, CFLAGS, "-MMD", "-fPIC", "-o", output, "-c",
+          CONCAT(PATH(".", features[0].elems[0], file)));
+      cmd.line = cstr_array_append(cmd.line, output);
+    });
+    INFO("CMD: %s", cmd_show(cmd));
+    cmd_run_sync(cmd);
   }
 }
 
