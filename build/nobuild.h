@@ -70,7 +70,9 @@ typedef struct {
 } Cstr_Array;
 
 Cstr_Array *features = NULL;
+Cstr_Array *deps = NULL;
 static int feature_count = 0;
+static int deps_count = 0;
 
 Cstr_Array cstr_array_make(Cstr first, ...);
 Cstr_Array cstr_array_append(Cstr_Array cstrs, Cstr cstr);
@@ -89,13 +91,15 @@ Fd fd_open_for_read(Cstr path);
 Fd fd_open_for_write(Cstr path);
 void fd_close(Fd fd);
 void build();
+void obj_build(Cstr feature);
+void deps_set(Cstr feature, Cstr file);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 void handle_args(int argc, char **argv);
 void make_feature(Cstr val);
 void write_report();
 void create_folders();
-Cstr parse_feature_from_path();
+Cstr parse_feature_from_path(Cstr path);
 Cstr cmd_show(Cmd cmd);
 Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout);
 void cmd_run_sync(Cmd cmd);
@@ -131,17 +135,7 @@ typedef struct {
 
 #define OBJS(feature)                                                          \
   do {                                                                         \
-    Cmd cmd = {.line = cstr_array_make(                                        \
-                   LD, "-r", "-o", CONCAT("./obj/", feature, ".o"), NULL)};    \
-    FOREACH_FILE_IN_DIR(file, feature, {                                       \
-      Cstr output =                                                            \
-          CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");  \
-      CMD(CC, CFLAGS, "-MMD", "-fPIC", "-o", output, "-c",                     \
-          CONCAT(PATH(".", feature, file)));                                   \
-      cmd.line = cstr_array_append(cmd.line, output);                          \
-    });                                                                        \
-    INFO("CMD: %s", cmd_show(cmd));                                            \
-    cmd_run_sync(cmd);                                                         \
+    obj_build(feature);                                                        \
   } while (0)
 
 #ifndef NOLIBS
@@ -384,7 +378,7 @@ void update_results() {
     int number;
     fscanf(fp, "%d", &number);
     results.passed_total += number;
-    close(fd);
+    fclose(fp);
   }
 }
 
@@ -493,6 +487,7 @@ void write_report(Cstr file) {
   Fd fd = fd_open_for_write(file);
   FILE *fp = fdopen(fd, "a");
   fprintf(fp, "%d", results.passed_total);
+  fclose(fp);
 }
 
 void handle_args(int argc, char **argv) {
@@ -500,8 +495,7 @@ void handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  INFO("handle_args");
-  while ((opt_char = getopt_long(argc, argv, "h:a:c:f:rd", flags,
+  while ((opt_char = getopt_long(argc, argv, "h:a:c:f:d:r", flags,
                                  &option_index)) != -1) {
     found = 1;
     INFO("found");
@@ -592,20 +586,65 @@ void test_pid_wait(Pid pid) {
   }
 }
 
+void obj_build(Cstr feature) {
+  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
+                                     CONCAT("./obj/", feature, ".o"), NULL)};
+  FOREACH_FILE_IN_DIR(file, feature, {
+    Cstr output =
+        CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");
+    CMD(CC, CFLAGS, "-MMD", "-fPIC", "-o", output, "-c",
+        CONCAT(PATH(".", feature, file)));
+    deps_set(feature, file);
+    cmd.line = cstr_array_append(cmd.line, output);
+  });
+  INFO("CMD: %s", cmd_show(cmd));
+  cmd_run_sync(cmd);
+}
+
+void deps_set(Cstr feature, Cstr file) {
+  if (deps == NULL) {
+    deps = malloc(sizeof(Cstr_Array));
+    deps_count++;
+  } else {
+    deps = realloc(deps, sizeof(Cstr_Array) * ++deps_count);
+  }
+  if (deps == NULL) {
+    PANIC("could not allocate memory: %s", strerror(errno));
+  }
+  char *line_buffer = NULL;
+  size_t size = 0;
+
+  Fd fd = fd_open_for_read(CONCAT("./obj/", feature, "/", NOEXT(file), ".d"));
+  FILE *fp = fdopen(fd, "r");
+  getline(&line_buffer, &size, fp);
+  fclose(fp);
+  char *lhs = strtok(line_buffer, ":");
+  deps[deps_count - 1] = cstr_array_make(lhs);
+
+  while (lhs != NULL) {
+    lhs = strtok(NULL, " ");
+    if (lhs != NULL) {
+      char *found = strstr(lhs, "\n");
+      if (found != NULL) {
+        int index = found - lhs;
+        lhs[index] = '\0';
+      }
+      found = strstr(lhs, "..");
+      if (found != NULL) {
+        int index = found - lhs;
+        lhs = &lhs[index + 3];
+      }
+      INFO("deps %s", lhs);
+      deps[deps_count - 1] = cstr_array_append(deps[deps_count - 1], lhs);
+    }
+  }
+
+  // memcpy(&features[feature_count - 1], &val, sizeof(Cstr_Array));
+}
+
 void build() {
   for (int i = 0; i < feature_count; i++) {
-    Cmd cmd = {.line = cstr_array_make(
-                   LD, "-r", "-o", CONCAT("./obj/", features[0].elems[0], ".o"),
-                   NULL)};
-    FOREACH_FILE_IN_DIR(file, features[0].elems[0], {
-      Cstr output = CONCAT(PATH(".", CONCAT("obj/", features[0].elems[0], "/")),
-                           NOEXT(file), ".o");
-      CMD(CC, CFLAGS, "-MMD", "-fPIC", "-o", output, "-c",
-          CONCAT(PATH(".", features[0].elems[0], file)));
-      cmd.line = cstr_array_append(cmd.line, output);
-    });
-    INFO("CMD: %s", cmd_show(cmd));
-    cmd_run_sync(cmd);
+    obj_build(features[i].elems[0]);
   }
 }
 
