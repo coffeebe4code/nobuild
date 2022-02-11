@@ -29,6 +29,13 @@
 #ifndef LD
 #define LD "ld"
 #endif
+#if defined(__GNUC__) || defined(__clang__)
+// https://gcc.gnu.org/onlinedocs/gcc-4.7.2/gcc/Function-Attributes.html
+#define NOBUILD_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)                    \
+  __attribute__((format(printf, STRING_INDEX, FIRST_TO_CHECK)))
+#else
+#define NOBUILD_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)
+#endif
 
 #include <assert.h>
 #include <errno.h>
@@ -69,6 +76,7 @@ static int test_result_status = 0;
 static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
                                 {"release", no_argument, 0, 'r'},
                                 {"clean", no_argument, 0, 'c'},
+                                {"add", no_argument, 0, 'a'},
                                 {"debug", no_argument, 0, 'd'}};
 static result_t results = {0};
 static Cstr_Array *features = NULL;
@@ -109,6 +117,16 @@ int path_is_dir(Cstr path);
 void path_mkdirs(Cstr_Array path);
 void path_rename(Cstr old_path, Cstr new_path);
 void path_rm(Cstr path);
+void VLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args);
+void TABLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args);
+void INFO(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void WARN(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void ERRO(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void PANIC(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void FAILLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void DESCLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
+void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 // macros
 #define FOREACH_ARRAY(type, elem, array, body)                                 \
@@ -321,25 +339,6 @@ void path_rm(Cstr path);
     closedir(dir);                                                             \
   } while (0)
 
-#if defined(__GNUC__) || defined(__clang__)
-// https://gcc.gnu.org/onlinedocs/gcc-4.7.2/gcc/Function-Attributes.html
-#define NOBUILD_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)                    \
-  __attribute__((format(printf, STRING_INDEX, FIRST_TO_CHECK)))
-#else
-#define NOBUILD_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)
-#endif
-
-void VLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args);
-void TABLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args);
-void INFO(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void WARN(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void ERRO(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void PANIC(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void FAILLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void DESCLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
-
 #endif // NOBUILD_H_
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -465,10 +464,12 @@ Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2) {
   }
 
   cstrs1.elems =
-      realloc(cstrs1.elems, sizeof(Cstr_Array) * (cstrs1.count + cstrs2.count));
-  memcpy(&cstrs1.elems[cstrs1.count], &cstrs2.elems,
+      realloc(cstrs1.elems, sizeof(Cstr *) * (cstrs1.count + cstrs2.count));
+
+  memcpy(&cstrs1.elems[cstrs1.count], &cstrs2.elems[0],
          sizeof(Cstr *) * cstrs2.count);
   cstrs1.count += cstrs2.count;
+  return cstrs1;
 }
 
 Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
@@ -576,11 +577,15 @@ void handle_args(int argc, char **argv) {
 }
 
 void make_feature(Cstr feature) {
-  CMD("touch", CONCAT("include/", feature, ".h"));
+  Cstr inc = CONCAT("include/", feature, ".h");
+  Cstr lib = CONCAT(feature, "/lib.c");
+  Cstr test = CONCAT("tests/", feature, ".c");
+  CMD("touch", inc);
   MKDIRS(feature);
-  CMD("touch", CONCAT(feature, "/lib.c"));
+  CMD("touch", lib);
   MKDIRS("tests");
-  CMD("touch", CONCAT("tests/", feature, ".c"));
+  CMD("touch", test);
+  CMD("git", "add", inc, lib, test);
 }
 
 Cstr parse_feature_from_path(Cstr val) {
@@ -631,19 +636,12 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
   Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
                                      CONCAT("obj/", feature, ".o"), NULL)};
   FOREACH_FILE_IN_DIR(file, feature, {
-    Cstr output =
-        CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");
+    Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
-    for (int z = 0; z < comp_flags.count; z++) {
-      obj_cmd.line = cstr_array_append(obj_cmd.line, comp_flags.elems[z]);
-    }
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-MMD");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-fPIC");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-o");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, output);
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-c");
-    obj_cmd.line =
-        cstr_array_append(obj_cmd.line, CONCAT(PATH(".", feature, file)));
+    obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
+    Cstr_Array arr = cstr_array_make("-MMD", "-fPIC", "-o", output, "-c", NULL);
+    obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
+    obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
     cmd_run_sync(obj_cmd);
     deps_set(feature, file);
     cmd.line = cstr_array_append(cmd.line, output);
@@ -693,29 +691,31 @@ void deps_set(Cstr feature, Cstr file) {
 }
 
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps) {
-  Cmd cmd = {.line = cstr_array_make(CC, CFLAGS)};
-  FOREACH_FILE_IN_DIR(file, feature, {
-    Cstr output =
-        CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");
-    Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
-    for (int z = 0; z < comp_flags.count; z++) {
-      obj_cmd.line = cstr_array_append(obj_cmd.line, comp_flags.elems[z]);
-    }
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-MMD");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-fPIC");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-o");
-    obj_cmd.line = cstr_array_append(obj_cmd.line, output);
-    obj_cmd.line = cstr_array_append(obj_cmd.line, "-c");
-    obj_cmd.line =
-        cstr_array_append(obj_cmd.line, CONCAT(PATH(".", feature, file)));
-    cmd_run_sync(obj_cmd);
-    deps_set(feature, file);
-    cmd.line = cstr_array_append(cmd.line, output);
-  });
-  INFO("CMD: %s", cmd_show(cmd));
-  cmd_run_sync(cmd);
-  CMD(CC, CFLAGS, "-o", CONCAT("target/", feature),
-      CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
+        CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
+        Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, "-o",
+                                           CONCAT("target/", feature), NULL)};
+        FOREACH_FILE_IN_DIR(file, feature, {
+          Cstr output = CONCAT(PATH(".", CONCAT("obj/", feature, "/")),
+                               NOEXT(file), ".o");
+          Cmd tst_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+          for (int z = 0; z < comp_flags.count; z++) {
+            tst_cmd.line = cstr_array_append(tst_cmd.line, comp_flags.elems[z]);
+          }
+          tst_cmd.line = cstr_array_append(tst_cmd.line, "-MMD");
+          tst_cmd.line = cstr_array_append(tst_cmd.line, "-fPIC");
+          tst_cmd.line = cstr_array_append(tst_cmd.line, "-o");
+          tst_cmd.line = cstr_array_append(tst_cmd.line, output);
+          tst_cmd.line = cstr_array_append(tst_cmd.line, "-c");
+          tst_cmd.line =
+              cstr_array_append(tst_cmd.line, CONCAT(PATH(".", feature, file)));
+          cmd_run_sync(tst_cmd);
+          deps_set(feature, file);
+          cmd.line = cstr_array_append(cmd.line, output);
+        });
+        INFO("CMD: %s", cmd_show(cmd));
+        cmd_run_sync(cmd);
+        CMD(CC, CFLAGS, "-o", CONCAT("target/", feature),
+            CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
 }
 void release() { build(cstr_array_make(RCOMP, NULL)); }
 void debug() { build(cstr_array_make(DCOMP, NULL)); }
