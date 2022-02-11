@@ -3,8 +3,8 @@
 #include "../include/stuff.h"
 #include <stdio.h>
 
-void test_add_2() { no_assert(add_2(3) == 5); }
-void test_add_2_fail() { no_assert(add_2(4) == 5); }
+void test_add_2() { ASSERT(add_2(3) == 5); }
+void test_add_2_fail() { ASSERT(add_2(4) == 5); }
 
 int main() {
   DESCRIBE("stuff");

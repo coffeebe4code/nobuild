@@ -20,11 +20,15 @@
 #ifndef AR
 #define AR "ar"
 #endif
+#ifndef RCOMP
+#define RCOMP "-O3"
+#endif
+#ifndef DCOMP
+#define DCOMP "-g", "-O0"
+#endif
 #ifndef LD
 #define LD "ld"
 #endif
-typedef pid_t Pid;
-typedef int Fd;
 
 #include <assert.h>
 #include <errno.h>
@@ -40,59 +44,57 @@ typedef int Fd;
 #define ANSI_COLOR_CYAN "\x1b[36m"
 #define ANSI_COLOR_RESET "\x1b[0m"
 
-#define FOREACH_ARRAY(type, elem, array, body)                                 \
-  for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
-    type *elem = &array.elems[elem_##index];                                   \
-    body;                                                                      \
-  }
-
+// typedefs
+typedef pid_t Pid;
+typedef int Fd;
 typedef const char *Cstr;
-static int test_result_status = 0;
 typedef struct {
   short failure_total;
   short passed_total;
 } result_t;
-static struct option flags[] = {{"file", required_argument, 0, 'f'},
-                                {"release", no_argument, 0, 'r'},
-                                {"clean", no_argument, 0, 'c'},
-                                {"debug", no_argument, 0, 'd'}};
-static result_t results = {0};
-
-int cstr_ends_with(Cstr cstr, Cstr postfix);
-#define ENDS_WITH(cstr, postfix) cstr_ends_with(cstr, postfix)
-
-Cstr cstr_no_ext(Cstr path);
-#define NOEXT(path) cstr_no_ext(path)
-
 typedef struct {
   Cstr *elems;
   size_t count;
 } Cstr_Array;
-
-Cstr_Array *features = NULL;
-Cstr_Array *deps = NULL;
-static int feature_count = 0;
-static int deps_count = 0;
-
-Cstr_Array cstr_array_make(Cstr first, ...);
-Cstr_Array cstr_array_append(Cstr_Array cstrs, Cstr cstr);
-Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs);
-
-#define JOIN(sep, ...) cstr_array_join(sep, cstr_array_make(__VA_ARGS__, NULL))
-#define CONCAT(...) JOIN("", __VA_ARGS__)
-#define PATH(...) JOIN(PATH_SEP, __VA_ARGS__)
-
 typedef struct {
   Cstr_Array line;
 } Cmd;
+typedef struct {
+  Cmd *elems;
+  size_t count;
+} Cmd_Array;
+
+// statics
+static int test_result_status = 0;
+static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
+                                {"release", no_argument, 0, 'r'},
+                                {"clean", no_argument, 0, 'c'},
+                                {"debug", no_argument, 0, 'd'}};
+static result_t results = {0};
+static Cstr_Array *features = NULL;
+static Cstr_Array *deps = NULL;
+static int feature_count = 0;
+static int deps_count = 0;
 
 // forwards
+Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2);
+int cstr_ends_with(Cstr cstr, Cstr postfix);
+Cstr cstr_no_ext(Cstr path);
+Cstr_Array cstr_array_make(Cstr first, ...);
+Cstr_Array cstr_array_append(Cstr_Array cstrs, Cstr cstr);
+Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs);
 Fd fd_open_for_read(Cstr path);
 Fd fd_open_for_write(Cstr path);
 void fd_close(Fd fd);
-void build();
-void obj_build(Cstr feature);
+void release();
+void debug();
+void build(Cstr_Array comp_flags);
+void obj_build(Cstr feature, Cstr_Array comp_flags);
+void test_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
+void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
+void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void deps_set(Cstr feature, Cstr file);
+void recurse_deps(Cstr feature, Cstr file);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 void handle_args(int argc, char **argv);
@@ -103,11 +105,23 @@ Cstr parse_feature_from_path(Cstr path);
 Cstr cmd_show(Cmd cmd);
 Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout);
 void cmd_run_sync(Cmd cmd);
+int path_is_dir(Cstr path);
+void path_mkdirs(Cstr_Array path);
+void path_rename(Cstr old_path, Cstr new_path);
+void path_rm(Cstr path);
 
-typedef struct {
-  Cmd *elems;
-  size_t count;
-} Cmd_Array;
+// macros
+#define FOREACH_ARRAY(type, elem, array, body)                                 \
+  for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
+    type *elem = &array.elems[elem_##index];                                   \
+    body;                                                                      \
+  }
+
+#define ENDS_WITH(cstr, postfix) cstr_ends_with(cstr, postfix)
+#define NOEXT(path) cstr_no_ext(path)
+#define JOIN(sep, ...) cstr_array_join(sep, cstr_array_make(__VA_ARGS__, NULL))
+#define CONCAT(...) JOIN("", __VA_ARGS__)
+#define PATH(...) JOIN(PATH_SEP, __VA_ARGS__)
 
 #define CMD(...)                                                               \
   do {                                                                         \
@@ -122,38 +136,33 @@ typedef struct {
     RM("obj");                                                                 \
   } while (0)
 
-#define BUILD()                                                                \
-  do {                                                                         \
-    build();                                                                   \
-  } while (0)
-
 #define FIRSTRUN()                                                             \
   do {                                                                         \
     MKDIRS("target");                                                          \
     MKDIRS("obj");                                                             \
   } while (0)
 
-#define OBJS(feature)                                                          \
+#define OBJS(feature, comp_flags)                                              \
   do {                                                                         \
-    obj_build(feature);                                                        \
+    obj_build(feature, cstr_array_make(comp_flags));                           \
   } while (0)
 
 #ifndef NOLIBS
-#define LIBS(feature, links)                                                   \
+#define LIBS(feature, comp_flags)                                              \
   do {                                                                         \
-    CMD(CC, "-shared", "-o", CONCAT("./target/lib", feature, ".so"),           \
-        CONCAT("./obj/", feature, ".o"));                                      \
+    CMD(CC, "-shared", "-o", CONCAT("target/lib", feature, ".so"),             \
+        CONCAT("obj/", feature, ".o"));                                        \
   } while (0)
 #else
 #define LIBS(feature, links)                                                   \
   do {                                                                         \
   } while (0)
 #endif
-#ifndef NOSTATIC
+#ifndef NOSTATICS
 #define STATICS(feature, links)                                                \
   do {                                                                         \
-    CMD(AR, "-rc", CONCAT("./target/lib", feature, ".a"),                      \
-        CONCAT("./obj/", feature, ".o"));                                      \
+    CMD(AR, "-rc", CONCAT("target/lib", feature, ".a"),                        \
+        CONCAT("obj/", feature, ".o"));                                        \
   } while (0)
 #else
 #define STATICS(feature, ...)                                                  \
@@ -163,14 +172,14 @@ typedef struct {
 
 #define TESTS(feature, ...)                                                    \
   do {                                                                         \
-    CMD(CC, CFLAGS, "-o", CONCAT("./target/", feature),                        \
-        CONCAT("./obj/", feature, ".o"), CONCAT("./tests/", feature, ".c"));   \
+    CMD(CC, CFLAGS, "-o", CONCAT("target/", feature),                          \
+        CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));       \
   } while (0)
 
 #define EXEC_TESTS(feature)                                                    \
   do {                                                                         \
     Cmd cmd = {                                                                \
-        .line = cstr_array_make(CONCAT("./target/", feature), NULL),           \
+        .line = cstr_array_make(CONCAT("target/", feature), NULL),             \
     };                                                                         \
     INFO("CMD: %s", cmd_show(cmd));                                            \
     test_run_sync(cmd);                                                        \
@@ -198,7 +207,7 @@ typedef struct {
   do {                                                                         \
     if (is_first_run()) {                                                      \
       create_folders();                                                        \
-      Fd fd = fd_open_for_write("./target/nobuild/firstrun");                  \
+      Fd fd = fd_open_for_write("target/nobuild/firstrun");                    \
       write(fd, "", 1);                                                        \
       close(fd);                                                               \
     }                                                                          \
@@ -220,7 +229,7 @@ typedef struct {
     test_result_status = 0;                                                    \
   } while (0)
 
-#define no_assert(assertion)                                                   \
+#define ASSERT(assertion)                                                      \
   do {                                                                         \
     if (!(assertion)) {                                                        \
       test_result_status = 1;                                                  \
@@ -247,15 +256,12 @@ typedef struct {
 
 #define RETURN()                                                               \
   do {                                                                         \
-    write_report(                                                              \
-        CONCAT("./target/nobuild/", features[0].elems[0], ".report"));         \
+    write_report(CONCAT("target/nobuild/", features[0].elems[0], ".report"));  \
     return results.failure_total;                                              \
   } while (0)
 
-int path_is_dir(Cstr path);
 #define IS_DIR(path) path_is_dir(path)
 
-void path_mkdirs(Cstr_Array path);
 #define MKDIRS(...)                                                            \
   do {                                                                         \
     Cstr_Array path = cstr_array_make(__VA_ARGS__, NULL);                      \
@@ -263,18 +269,36 @@ void path_mkdirs(Cstr_Array path);
     path_mkdirs(path);                                                         \
   } while (0)
 
-void path_rename(Cstr old_path, Cstr new_path);
 #define RENAME(old_path, new_path)                                             \
   do {                                                                         \
     INFO("RENAME: %s -> %s", old_path, new_path);                              \
     path_rename(old_path, new_path);                                           \
   } while (0)
 
-void path_rm(Cstr path);
 #define RM(path)                                                               \
   do {                                                                         \
     INFO("RM: %s", path);                                                      \
     path_rm(path);                                                             \
+  } while (0)
+
+#define FOREACH_FILE_IN_DIR(file, dirpath, body)                               \
+  do {                                                                         \
+    struct dirent *dp = NULL;                                                  \
+    DIR *dir = opendir(dirpath);                                               \
+    if (dir == NULL) {                                                         \
+      PANIC("could not open directory %s: %s", dirpath, strerror(errno));      \
+    }                                                                          \
+    errno = 0;                                                                 \
+    while ((dp = readdir(dir))) {                                              \
+      if (strncmp(dp->d_name, ".", sizeof(char)) != 0) {                       \
+        const char *file = dp->d_name;                                         \
+        body;                                                                  \
+      }                                                                        \
+    }                                                                          \
+    if (errno > 0) {                                                           \
+      PANIC("could not read directory %s: %s", dirpath, strerror(errno));      \
+    }                                                                          \
+    closedir(dir);                                                             \
   } while (0)
 
 #define FOREACH_FILE_IN_DIR(file, dirpath, body)                               \
@@ -355,7 +379,7 @@ Cstr cstr_no_ext(Cstr path) {
 }
 
 int is_first_run() {
-  Fd result = open("./target/first", O_RDONLY);
+  Fd result = open("target/first", O_RDONLY);
   if (result < 0) {
     return 1;
   }
@@ -373,7 +397,7 @@ void create_folders() {
 void update_results() {
   for (int i = 0; i < feature_count; i++) {
     Fd fd = fd_open_for_read(
-        CONCAT("./target/nobuild/", features[i].elems[0], ".report"));
+        CONCAT("target/nobuild/", features[i].elems[0], ".report"));
     FILE *fp = fdopen(fd, "r");
     int number;
     fscanf(fp, "%d", &number);
@@ -413,7 +437,7 @@ Cstr_Array cstr_array_make(Cstr first, ...) {
   }
   va_end(args);
 
-  result.elems = malloc(sizeof(result.elems[0]) * result.count);
+  result.elems = calloc(result.count, sizeof(result.elems[0]));
   if (result.elems == NULL) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
@@ -429,6 +453,22 @@ Cstr_Array cstr_array_make(Cstr first, ...) {
   va_end(args);
 
   return result;
+}
+
+Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2) {
+  if (cstrs1.count == 0 && cstrs2.count == 0) {
+    return cstr_array_make("", "", NULL);
+  } else if (cstrs1.count == 0) {
+    return cstrs2;
+  } else if (cstrs2.count == 0) {
+    return cstrs1;
+  }
+
+  cstrs1.elems =
+      realloc(cstrs1.elems, sizeof(Cstr_Array) * (cstrs1.count + cstrs2.count));
+  memcpy(&cstrs1.elems[cstrs1.count], &cstrs2.elems,
+         sizeof(Cstr *) * cstrs2.count);
+  cstrs1.count += cstrs2.count;
 }
 
 Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
@@ -495,24 +535,25 @@ void handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "h:a:c:f:d:r", flags,
+  while ((opt_char = getopt_long(argc, argv, "h:a:c:i:d:r", flags,
                                  &option_index)) != -1) {
     found = 1;
-    INFO("found");
     switch ((int)opt_char) {
     case 'c': {
       CLEAN();
       break;
     }
-    case 'f': {
+    case 'i': {
       // Cstr parsed = parse_feature_from_path(optarg);
       break;
     }
     case 'r': {
       CLEAN();
+      release();
       break;
     }
     case 'd': {
+      debug();
       break;
     }
     case 'a': {
@@ -530,16 +571,16 @@ void handle_args(int argc, char **argv) {
   if (found == 0) {
     WARN("No arguments passed to nobuild");
     WARN("Building all features");
-    BUILD();
+    debug();
   }
 }
 
 void make_feature(Cstr feature) {
-  CMD("touch", CONCAT("./include/", feature, ".h"));
+  CMD("touch", CONCAT("include/", feature, ".h"));
   MKDIRS(feature);
-  CMD("touch", CONCAT("./", feature, "/lib.c"));
-  MKDIRS("./tests");
-  CMD("touch", CONCAT("./tests/", feature, ".c"));
+  CMD("touch", CONCAT(feature, "/lib.c"));
+  MKDIRS("tests");
+  CMD("touch", CONCAT("tests/", feature, ".c"));
 }
 
 Cstr parse_feature_from_path(Cstr val) {
@@ -586,20 +627,32 @@ void test_pid_wait(Pid pid) {
   }
 }
 
-void obj_build(Cstr feature) {
+void obj_build(Cstr feature, Cstr_Array comp_flags) {
   Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
-                                     CONCAT("./obj/", feature, ".o"), NULL)};
+                                     CONCAT("obj/", feature, ".o"), NULL)};
   FOREACH_FILE_IN_DIR(file, feature, {
     Cstr output =
         CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");
-    CMD(CC, CFLAGS, "-MMD", "-fPIC", "-o", output, "-c",
-        CONCAT(PATH(".", feature, file)));
+    Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+    for (int z = 0; z < comp_flags.count; z++) {
+      obj_cmd.line = cstr_array_append(obj_cmd.line, comp_flags.elems[z]);
+    }
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-MMD");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-fPIC");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-o");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, output);
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-c");
+    obj_cmd.line =
+        cstr_array_append(obj_cmd.line, CONCAT(PATH(".", feature, file)));
+    cmd_run_sync(obj_cmd);
     deps_set(feature, file);
     cmd.line = cstr_array_append(cmd.line, output);
   });
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
+
+void recurse_deps(Cstr feature, Cstr file) {}
 
 void deps_set(Cstr feature, Cstr file) {
   if (deps == NULL) {
@@ -614,7 +667,7 @@ void deps_set(Cstr feature, Cstr file) {
   char *line_buffer = NULL;
   size_t size = 0;
 
-  Fd fd = fd_open_for_read(CONCAT("./obj/", feature, "/", NOEXT(file), ".d"));
+  Fd fd = fd_open_for_read(CONCAT("obj/", feature, "/", NOEXT(file), ".d"));
   FILE *fp = fdopen(fd, "r");
   getline(&line_buffer, &size, fp);
   fclose(fp);
@@ -634,17 +687,45 @@ void deps_set(Cstr feature, Cstr file) {
         int index = found - lhs;
         lhs = &lhs[index + 3];
       }
-      INFO("deps %s", lhs);
       deps[deps_count - 1] = cstr_array_append(deps[deps_count - 1], lhs);
     }
   }
-
-  // memcpy(&features[feature_count - 1], &val, sizeof(Cstr_Array));
 }
 
-void build() {
+void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps) {
+  Cmd cmd = {.line = cstr_array_make(CC, CFLAGS)};
+  FOREACH_FILE_IN_DIR(file, feature, {
+    Cstr output =
+        CONCAT(PATH(".", CONCAT("obj/", feature, "/")), NOEXT(file), ".o");
+    Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+    for (int z = 0; z < comp_flags.count; z++) {
+      obj_cmd.line = cstr_array_append(obj_cmd.line, comp_flags.elems[z]);
+    }
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-MMD");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-fPIC");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-o");
+    obj_cmd.line = cstr_array_append(obj_cmd.line, output);
+    obj_cmd.line = cstr_array_append(obj_cmd.line, "-c");
+    obj_cmd.line =
+        cstr_array_append(obj_cmd.line, CONCAT(PATH(".", feature, file)));
+    cmd_run_sync(obj_cmd);
+    deps_set(feature, file);
+    cmd.line = cstr_array_append(cmd.line, output);
+  });
+  INFO("CMD: %s", cmd_show(cmd));
+  cmd_run_sync(cmd);
+  CMD(CC, CFLAGS, "-o", CONCAT("target/", feature),
+      CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
+}
+void release() { build(cstr_array_make(RCOMP, NULL)); }
+void debug() { build(cstr_array_make(DCOMP, NULL)); }
+
+void build(Cstr_Array comp_flags) {
   for (int i = 0; i < feature_count; i++) {
-    obj_build(features[i].elems[0]);
+    obj_build(features[i].elems[0], comp_flags);
+  }
+  for (int i = 0; i < feature_count; i++) {
+    //    test_build(features[i].elems[0], comp_flags);
   }
 }
 

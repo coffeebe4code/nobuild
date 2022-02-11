@@ -1,6 +1,7 @@
 #define NOBUILD_IMPLEMENTATION
 #define CFLAGS "-Wall", "-Werror", "-std=c11"
-#define NOSTATIC
+#define NOSTATICS
+#define NOLIBS
 #include "./nobuild.h"
 
 int main(int argc, char **argv) {
