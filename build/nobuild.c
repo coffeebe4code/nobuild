@@ -7,6 +7,7 @@
 int main(int argc, char **argv) {
   CLEAN();
   ADD_FEATURE("stuff");
+  ADD_FEATURE("things");
   BOOTSTRAP(argc, argv);
   // --file ./myfeature/lib.c
   RESULTS();

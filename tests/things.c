@@ -3,7 +3,7 @@
 #include "../include/things.h"
 #include <stdio.h>
 
-void test_add_4() { no_assert(add_4(3) == 7); }
+void test_add_4() { ASSERT(add_4(3) == 7); }
 
 int main() {
   DESCRIBE("things");

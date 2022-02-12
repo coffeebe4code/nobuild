@@ -98,7 +98,8 @@ void release();
 void debug();
 void build(Cstr_Array comp_flags);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
-void test_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
+void test_build(Cstr feature, Cstr_Array comp_flags);
+Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void deps_set(Cstr feature, Cstr file);
@@ -113,6 +114,7 @@ Cstr parse_feature_from_path(Cstr path);
 Cstr cmd_show(Cmd cmd);
 Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout);
 void cmd_run_sync(Cmd cmd);
+void test_run_sync(Cmd cmd);
 int path_is_dir(Cstr path);
 void path_mkdirs(Cstr_Array path);
 void path_rename(Cstr old_path, Cstr new_path);
@@ -688,36 +690,46 @@ void deps_set(Cstr feature, Cstr file) {
       deps[deps_count - 1] = cstr_array_append(deps[deps_count - 1], lhs);
     }
   }
+  INFO("deps %s", deps[deps_count - 1].elems[0]);
+  for (int i = 1; i < deps[deps_count - 1].count; i++) {
+    INFO("file %s", deps[deps_count - 1].elems[i]);
+  }
 }
 
-void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps) {
-        CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
-        Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, "-o",
-                                           CONCAT("target/", feature), NULL)};
-        FOREACH_FILE_IN_DIR(file, feature, {
-          Cstr output = CONCAT(PATH(".", CONCAT("obj/", feature, "/")),
-                               NOEXT(file), ".o");
-          Cmd tst_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
-          for (int z = 0; z < comp_flags.count; z++) {
-            tst_cmd.line = cstr_array_append(tst_cmd.line, comp_flags.elems[z]);
-          }
-          tst_cmd.line = cstr_array_append(tst_cmd.line, "-MMD");
-          tst_cmd.line = cstr_array_append(tst_cmd.line, "-fPIC");
-          tst_cmd.line = cstr_array_append(tst_cmd.line, "-o");
-          tst_cmd.line = cstr_array_append(tst_cmd.line, output);
-          tst_cmd.line = cstr_array_append(tst_cmd.line, "-c");
-          tst_cmd.line =
-              cstr_array_append(tst_cmd.line, CONCAT(PATH(".", feature, file)));
-          cmd_run_sync(tst_cmd);
-          deps_set(feature, file);
-          cmd.line = cstr_array_append(cmd.line, output);
-        });
-        INFO("CMD: %s", cmd_show(cmd));
-        cmd_run_sync(cmd);
-        CMD(CC, CFLAGS, "-o", CONCAT("target/", feature),
-            CONCAT("obj/", feature, ".o"), CONCAT("tests/", feature, ".c"));
+Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed) {
+  Cstr_Array copied_deps = {0};
+  for (int i = 0; i < deps_count; i++) {
+    if (strcmp(deps[i].elems[0], file) == 0) {
+      for (int j = 1; j < deps[i].count; j++) {
+        if (strcmp(".h", deps[i].elems[j]) > 0) {
+          copied_deps = cstr_array_append(
+              copied_deps, CONCAT(NOEXT(deps[i].elems[j]), ".o"));
+        }
+      }
+    }
+  }
+  return copied_deps;
 }
+
+void test_build(Cstr feature, Cstr_Array comp_flags) {
+  Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+  cmd.line = cstr_array_concat(cmd.line, comp_flags);
+  cmd.line = cstr_array_concat(
+      cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
+                                CONCAT("tests/", feature, ".c"), NULL));
+  FOREACH_FILE_IN_DIR(file, feature, {
+    Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
+    Cstr_Array processed = cstr_array_make(output, NULL);
+    Cstr_Array local_deps = deps_get_lifted(output, processed);
+    cmd.line = cstr_array_append(cmd.line, output);
+    cmd.line = cstr_array_concat(cmd.line, local_deps);
+  });
+  INFO("CMD: %s", cmd_show(cmd));
+  cmd_run_sync(cmd);
+}
+
 void release() { build(cstr_array_make(RCOMP, NULL)); }
+
 void debug() { build(cstr_array_make(DCOMP, NULL)); }
 
 void build(Cstr_Array comp_flags) {
@@ -725,8 +737,10 @@ void build(Cstr_Array comp_flags) {
     obj_build(features[i].elems[0], comp_flags);
   }
   for (int i = 0; i < feature_count; i++) {
-    //    test_build(features[i].elems[0], comp_flags);
+    test_build(features[i].elems[0], comp_flags);
+    EXEC_TESTS(features[i].elems[0]);
   }
+  RESULTS();
 }
 
 void pid_wait(Pid pid) {
