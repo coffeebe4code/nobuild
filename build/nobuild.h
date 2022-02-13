@@ -635,7 +635,7 @@ void test_pid_wait(Pid pid) {
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
-  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-MMD", "-o",
+  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
                                      CONCAT("obj/", feature, ".o"), NULL)};
   FOREACH_FILE_IN_DIR(file, feature, {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
