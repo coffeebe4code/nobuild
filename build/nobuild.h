@@ -635,7 +635,7 @@ void test_pid_wait(Pid pid) {
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
-  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
+  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-MMD", "-o",
                                      CONCAT("obj/", feature, ".o"), NULL)};
   FOREACH_FILE_IN_DIR(file, feature, {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
@@ -700,13 +700,18 @@ Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed) {
   Cstr_Array copied_deps = {0};
   for (int i = 0; i < deps_count; i++) {
     if (strcmp(deps[i].elems[0], file) == 0) {
+      INFO("found matching file");
       for (int j = 1; j < deps[i].count; j++) {
-        if (strcmp(".h", deps[i].elems[j]) > 0) {
+        if (strcmp(".h", deps[i].elems[j]) == -1) {
           copied_deps = cstr_array_append(
-              copied_deps, CONCAT(NOEXT(deps[i].elems[j]), ".o"));
+              copied_deps,
+              CONCAT("obj/", parse_feature_from_path(deps[i].elems[j])));
         }
       }
     }
+  }
+  for (int i = 0; i < copied_deps.count; i++) {
+    INFO("copied %s", copied_deps.elems[i]);
   }
   return copied_deps;
 }
