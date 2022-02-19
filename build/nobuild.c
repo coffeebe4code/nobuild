@@ -5,7 +5,6 @@
 #include "./nobuild.h"
 
 int main(int argc, char **argv) {
-  CLEAN();
   ADD_FEATURE("stuff");
   ADD_FEATURE("things");
   DEPS("things", "stuff");
