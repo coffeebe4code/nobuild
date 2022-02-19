@@ -103,6 +103,7 @@ Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void deps_set(Cstr feature, Cstr file);
+void manual_deps(Cstr feature, Cstr_Array deps);
 void recurse_deps(Cstr feature, Cstr file);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
@@ -142,6 +143,12 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 #define JOIN(sep, ...) cstr_array_join(sep, cstr_array_make(__VA_ARGS__, NULL))
 #define CONCAT(...) JOIN("", __VA_ARGS__)
 #define PATH(...) JOIN(PATH_SEP, __VA_ARGS__)
+
+#define DEPS(first, ...)                                                       \
+  do {                                                                         \
+    Cstr_Array deps = cstr_array_make(__VA_ARGS__, NULL);                      \
+    manual_deps(first, deps);                                                  \
+  } while (0)
 
 #define CMD(...)                                                               \
   do {                                                                         \
@@ -623,15 +630,10 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
     obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
     cmd_run_sync(obj_cmd);
-    deps_set(feature, file);
   });
 }
 
-Cstr_Array recurse_header_deps(Cstr feature, Cstr file, Cstr_Array processed) {
-  return processed;
-}
-
-void deps_set(Cstr feature, Cstr file) {
+void manual_deps(Cstr feature, Cstr_Array man_deps) {
   if (deps == NULL) {
     deps = malloc(sizeof(Cstr_Array));
     deps_count++;
@@ -641,67 +643,28 @@ void deps_set(Cstr feature, Cstr file) {
   if (deps == NULL) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
-  char *line_buffer = NULL;
-  size_t size = 0;
-
-  Fd fd = fd_open_for_read(CONCAT("obj/", feature, "/", NOEXT(file), ".d"));
-  FILE *fp = fdopen(fd, "r");
-  getline(&line_buffer, &size, fp);
-  fclose(fp);
-  char *lhs = strtok(line_buffer, ":");
-  deps[deps_count - 1] = cstr_array_make(lhs);
-
-  while (lhs != NULL) {
-    lhs = strtok(NULL, " ");
-    if (lhs != NULL) {
-      char *found = strstr(lhs, "\n");
-      if (found != NULL) {
-        int index = found - lhs;
-        lhs[index] = '\0';
-      }
-      found = strstr(lhs, "..");
-      if (found != NULL) {
-        int index = found - lhs;
-        lhs = &lhs[index + 3];
-      }
-      deps[deps_count - 1] = cstr_array_append(deps[deps_count - 1], lhs);
-    }
-  }
-  INFO("deps %s", deps[deps_count - 1].elems[0]);
-  for (int i = 1; i < deps[deps_count - 1].count; i++) {
-    INFO("file %s", deps[deps_count - 1].elems[i]);
-  }
+  deps[deps_count - 1] = cstr_array_make(feature);
+  deps[deps_count - 1] = cstr_array_concat(deps[deps_count - 1], man_deps);
 }
 
-Cstr_Array deps_recurse(Cstr file, Cstr_Array processed, Cstr_Array checked) {
+Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed) {
+  processed = cstr_array_append(processed, feature);
   for (int i = 0; i < deps_count; i++) {
-    if (strcmp(deps[i].elems[0], file) == 0) {
-      INFO("found matching file");
+    if (strcmp(deps[i].elems[0], feature) == 0) {
       for (int j = 1; j < deps[i].count; j++) {
-        if (strcmp(".h", deps[i].elems[j]) == -1) {
+        int found = 0;
+        for (int k = 0; k < processed.count; k++) {
+          if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
+            found += 1;
+          }
+        }
+        if (found == 0) {
+          processed = deps_get_manual(deps[i].elems[j], processed);
         }
       }
     }
   }
   return processed;
-}
-
-Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed) {
-  Cstr_Array copied_deps = {0};
-  for (int i = 0; i < deps_count; i++) {
-    if (strcmp(deps[i].elems[0], file) == 0) {
-      for (int j = 1; j < deps[i].count; j++) {
-        if (strcmp(".h", deps[i].elems[j]) == -1) {
-          for (int k = 0; k < processed.count; k++) {
-          }
-        }
-      }
-    }
-  }
-  for (int i = 0; i < copied_deps.count; i++) {
-    INFO("copied %s", copied_deps.elems[i]);
-  }
-  return copied_deps;
 }
 
 void test_build(Cstr feature, Cstr_Array comp_flags) {
@@ -710,13 +673,15 @@ void test_build(Cstr feature, Cstr_Array comp_flags) {
   cmd.line = cstr_array_concat(
       cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
                                 CONCAT("tests/", feature, ".c"), NULL));
-  Cstr_Array processed = {0};
-  FOREACH_FILE_IN_DIR(file, feature, {
-    Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
-    processed = deps_get_lifted(output, processed);
-    cmd.line = cstr_array_append(cmd.line, output);
-    cmd.line = cstr_array_concat(cmd.line, processed);
-  });
+  Cstr_Array local_deps = {0};
+  local_deps = deps_get_manual(feature, local_deps);
+  for (int i = local_deps.count - 1; i >= 0; i--) {
+    Cstr curr_feature = local_deps.elems[i];
+    FOREACH_FILE_IN_DIR(file, curr_feature, {
+      Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
+      cmd.line = cstr_array_append(cmd.line, output);
+    });
+  }
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
@@ -730,11 +695,12 @@ void build(Cstr_Array comp_flags) {
     obj_build(features[i].elems[0], comp_flags);
   }
   for (int i = 0; i < feature_count; i++) {
-    INFO("building tests");
     test_build(features[i].elems[0], comp_flags);
-    // EXEC_TESTS(features[i].elems[0]);
   }
-  // RESULTS();
+  for (int i = 0; i < feature_count; i++) {
+    EXEC_TESTS(features[i].elems[0]);
+  }
+  RESULTS();
 }
 
 void pid_wait(Pid pid) {

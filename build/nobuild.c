@@ -8,8 +8,8 @@ int main(int argc, char **argv) {
   CLEAN();
   ADD_FEATURE("stuff");
   ADD_FEATURE("things");
+  DEPS("things", "stuff");
   BOOTSTRAP(argc, argv);
-  // --file ./myfeature/lib.c
   RESULTS();
 
   return 0;

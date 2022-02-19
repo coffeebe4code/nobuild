@@ -10,6 +10,10 @@ jobs:
         run: |
           $CC ./build/nobuild.c -o ./build/nobuild
           ./build/nobuild
+          if [$? == 2]; then
+            exit 0
+          fi
+          exit $?
         env:
           AR: ar
           LD: ld
@@ -23,6 +27,10 @@ jobs:
         run: |
           $CC ./build/nobuild.c -o ./build/nobuild
           ./build/nobuild
+          if [$? == 2]; then
+            exit 0
+          fi
+          exit $?
         env:
           AR: llvm-ar
           LD: llvm-link
@@ -36,6 +44,10 @@ jobs:
         run: |
           $CC ./build/nobuild.c -o ./build/nobuild
           ./build/nobuild
+          if [$? == 2]; then
+            exit 0
+          fi
+          exit $?
         env:
           AR: llvm-ar
           LD: llvm-link
