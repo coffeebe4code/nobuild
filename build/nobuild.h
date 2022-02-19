@@ -410,12 +410,6 @@ void add_feature(Cstr_Array val) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
   memcpy(&features[feature_count - 1], &val, sizeof(Cstr_Array));
-  for (int i = 0; i < feature_count; i++) {
-    INFO("feature %s", features[i].elems[0]);
-    for (int j = 1; j < features[i].count; j++) {
-      INFO("links %s", features[i].elems[j]);
-    }
-  }
 }
 
 Cstr_Array cstr_array_make(Cstr first, ...) {
@@ -633,6 +627,13 @@ void test_pid_wait(Pid pid) {
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
   FOREACH_FILE_IN_DIR(file, feature, {
+    INFO("1");
+    for (int i = 0; i < feature_count; i++) {
+      INFO("feature %s", features[i].elems[0]);
+      for (int j = 1; j < features[i].count; j++) {
+        INFO("links %s", features[i].elems[j]);
+      }
+    }
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
     obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
@@ -640,6 +641,13 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
     obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
     cmd_run_sync(obj_cmd);
+    INFO("2");
+    for (int i = 0; i < feature_count; i++) {
+      INFO("feature %s", features[i].elems[0]);
+      for (int j = 1; j < features[i].count; j++) {
+        INFO("links %s", features[i].elems[j]);
+      }
+    }
   });
 }
 
