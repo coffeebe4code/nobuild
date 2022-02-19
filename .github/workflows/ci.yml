@@ -19,6 +19,7 @@ jobs:
           if [$? == 2]; then
             exit 0
           fi
+          echo "there was an issue with nobuild"
           exit $?
         env:
           AR: ar
@@ -36,6 +37,7 @@ jobs:
           if [$? == 2]; then
             exit 0
           fi
+          echo "there was an issue with nobuild"
           exit $?
         env:
           AR: llvm-ar
@@ -53,6 +55,7 @@ jobs:
           if [$? == 2]; then
             exit 0
           fi
+          echo "there was an issue with nobuild"
           exit $?
         env:
           AR: llvm-ar
