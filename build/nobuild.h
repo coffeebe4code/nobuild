@@ -310,6 +310,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 #define FOREACH_FILE_IN_DIR(file, dirpath, body)                               \
   do {                                                                         \
+    INFO("dirpath %s", dirpath);                                               \
     struct dirent *dp = NULL;                                                  \
     DIR *dir = opendir(dirpath);                                               \
     if (dir == NULL) {                                                         \
@@ -810,7 +811,6 @@ void path_mkdirs(Cstr_Array path) {
     if (mkdir(result, 0755) < 0) {
       if (errno == EEXIST) {
         errno = 0;
-        WARN("directory %s already exists", result);
       } else {
         PANIC("could not create directory %s: %s", result, strerror(errno));
       }
