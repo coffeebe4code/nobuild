@@ -410,6 +410,12 @@ void add_feature(Cstr_Array val) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
   memcpy(&features[feature_count - 1], &val, sizeof(Cstr_Array));
+  for (int i = 0; i < feature_count; i++) {
+    INFO("feature %s", features[i].elems[0]);
+    for (int j = 1; j < features[i].count; j++) {
+      INFO("links %s", features[i].elems[j]);
+    }
+  }
 }
 
 Cstr_Array cstr_array_make(Cstr first, ...) {
