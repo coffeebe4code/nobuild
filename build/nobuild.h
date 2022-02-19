@@ -321,26 +321,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     closedir(dir);                                                             \
   } while (0)
 
-#define FOREACH_FILE_IN_DIR(file, dirpath, body)                               \
-  do {                                                                         \
-    struct dirent *dp = NULL;                                                  \
-    DIR *dir = opendir(dirpath);                                               \
-    if (dir == NULL) {                                                         \
-      PANIC("could not open directory %s: %s", dirpath, strerror(errno));      \
-    }                                                                          \
-    errno = 0;                                                                 \
-    while ((dp = readdir(dir))) {                                              \
-      if (strncmp(dp->d_name, ".", sizeof(char)) != 0) {                       \
-        const char *file = dp->d_name;                                         \
-        body;                                                                  \
-      }                                                                        \
-    }                                                                          \
-    if (errno > 0) {                                                           \
-      PANIC("could not read directory %s: %s", dirpath, strerror(errno));      \
-    }                                                                          \
-    closedir(dir);                                                             \
-  } while (0)
-
 #endif // NOBUILD_H_
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -635,8 +615,6 @@ void test_pid_wait(Pid pid) {
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
-  Cmd cmd = {.line = cstr_array_make(LD, "-r", "-o",
-                                     CONCAT("obj/", feature, ".o"), NULL)};
   FOREACH_FILE_IN_DIR(file, feature, {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
@@ -646,13 +624,12 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
     cmd_run_sync(obj_cmd);
     deps_set(feature, file);
-    cmd.line = cstr_array_append(cmd.line, output);
   });
-  INFO("CMD: %s", cmd_show(cmd));
-  cmd_run_sync(cmd);
 }
 
-void recurse_deps(Cstr feature, Cstr file) {}
+Cstr_Array recurse_header_deps(Cstr feature, Cstr file, Cstr_Array processed) {
+  return processed;
+}
 
 void deps_set(Cstr feature, Cstr file) {
   if (deps == NULL) {
@@ -696,16 +673,27 @@ void deps_set(Cstr feature, Cstr file) {
   }
 }
 
-Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed) {
-  Cstr_Array copied_deps = {0};
+Cstr_Array deps_recurse(Cstr file, Cstr_Array processed, Cstr_Array checked) {
   for (int i = 0; i < deps_count; i++) {
     if (strcmp(deps[i].elems[0], file) == 0) {
       INFO("found matching file");
       for (int j = 1; j < deps[i].count; j++) {
         if (strcmp(".h", deps[i].elems[j]) == -1) {
-          copied_deps = cstr_array_append(
-              copied_deps,
-              CONCAT("obj/", parse_feature_from_path(deps[i].elems[j])));
+        }
+      }
+    }
+  }
+  return processed;
+}
+
+Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed) {
+  Cstr_Array copied_deps = {0};
+  for (int i = 0; i < deps_count; i++) {
+    if (strcmp(deps[i].elems[0], file) == 0) {
+      for (int j = 1; j < deps[i].count; j++) {
+        if (strcmp(".h", deps[i].elems[j]) == -1) {
+          for (int k = 0; k < processed.count; k++) {
+          }
         }
       }
     }
@@ -722,12 +710,12 @@ void test_build(Cstr feature, Cstr_Array comp_flags) {
   cmd.line = cstr_array_concat(
       cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
                                 CONCAT("tests/", feature, ".c"), NULL));
+  Cstr_Array processed = {0};
   FOREACH_FILE_IN_DIR(file, feature, {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
-    Cstr_Array processed = cstr_array_make(output, NULL);
-    Cstr_Array local_deps = deps_get_lifted(output, processed);
+    processed = deps_get_lifted(output, processed);
     cmd.line = cstr_array_append(cmd.line, output);
-    cmd.line = cstr_array_concat(cmd.line, local_deps);
+    cmd.line = cstr_array_concat(cmd.line, processed);
   });
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
@@ -742,10 +730,11 @@ void build(Cstr_Array comp_flags) {
     obj_build(features[i].elems[0], comp_flags);
   }
   for (int i = 0; i < feature_count; i++) {
+    INFO("building tests");
     test_build(features[i].elems[0], comp_flags);
-    EXEC_TESTS(features[i].elems[0]);
+    // EXEC_TESTS(features[i].elems[0]);
   }
-  RESULTS();
+  // RESULTS();
 }
 
 void pid_wait(Pid pid) {
