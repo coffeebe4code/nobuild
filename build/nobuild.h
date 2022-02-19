@@ -310,7 +310,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 #define FOREACH_FILE_IN_DIR(file, dirpath, body)                               \
   do {                                                                         \
-    INFO("dirpath %s", dirpath);                                               \
     struct dirent *dp = NULL;                                                  \
     DIR *dir = opendir(dirpath);                                               \
     if (dir == NULL) {                                                         \
@@ -608,7 +607,6 @@ void test_pid_wait(Pid pid) {
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
-      INFO("wtf");
       PANIC("could not wait on command (pid %d): %s", pid, strerror(errno));
     }
 
@@ -627,13 +625,6 @@ void test_pid_wait(Pid pid) {
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
   FOREACH_FILE_IN_DIR(file, feature, {
-    INFO("1");
-    for (int i = 0; i < feature_count; i++) {
-      INFO("feature %s", features[i].elems[0]);
-      for (int j = 1; j < features[i].count; j++) {
-        INFO("links %s", features[i].elems[j]);
-      }
-    }
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
     obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
@@ -641,13 +632,6 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
     obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
     cmd_run_sync(obj_cmd);
-    INFO("2");
-    for (int i = 0; i < feature_count; i++) {
-      INFO("feature %s", features[i].elems[0]);
-      for (int j = 1; j < features[i].count; j++) {
-        INFO("links %s", features[i].elems[j]);
-      }
-    }
   });
 }
 
@@ -693,8 +677,9 @@ void test_build(Cstr feature, Cstr_Array comp_flags) {
                                 CONCAT("tests/", feature, ".c"), NULL));
   Cstr_Array local_deps = {0};
   local_deps = deps_get_manual(feature, local_deps);
-  for (int i = local_deps.count - 1; i >= 0; i--) {
-    Cstr curr_feature = local_deps.elems[i];
+  for (int j = local_deps.count - 1; j >= 0; j--) {
+    INFO("append %s", local_deps.elems[j]);
+    Cstr curr_feature = local_deps.elems[j];
     FOREACH_FILE_IN_DIR(file, curr_feature, {
       Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
       cmd.line = cstr_array_append(cmd.line, output);
@@ -710,7 +695,6 @@ void debug() { build(cstr_array_make(DCOMP, NULL)); }
 
 void build(Cstr_Array comp_flags) {
   for (int i = 0; i < feature_count; i++) {
-    INFO("obj build %s", features[i].elems[0]);
     obj_build(features[i].elems[0], comp_flags);
   }
   for (int i = 0; i < feature_count; i++) {
