@@ -535,6 +535,12 @@ void handle_args(int argc, char **argv) {
     switch ((int)opt_char) {
     case 'c': {
       CLEAN();
+      create_folders();
+      Fd fd = fd_open_for_write("target/nobuild/firstrun");
+      if (write(fd, "", 1) == -1) {
+        PANIC("error creating firstrun file");
+      }
+      close(fd);
       break;
     }
     case 'i': {
