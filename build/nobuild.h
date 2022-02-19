@@ -696,6 +696,7 @@ void debug() { build(cstr_array_make(DCOMP, NULL)); }
 
 void build(Cstr_Array comp_flags) {
   for (int i = 0; i < feature_count; i++) {
+    INFO("obj build %s", features[i].elems[0]);
     obj_build(features[i].elems[0], comp_flags);
   }
   for (int i = 0; i < feature_count; i++) {
