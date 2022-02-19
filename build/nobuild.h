@@ -448,7 +448,8 @@ Cstr_Array cstr_array_make(Cstr first, ...) {
 
 Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2) {
   if (cstrs1.count == 0 && cstrs2.count == 0) {
-    return cstr_array_make("", "", NULL);
+    Cstr_Array temp = {0};
+    return temp;
   } else if (cstrs1.count == 0) {
     return cstrs2;
   } else if (cstrs2.count == 0) {
