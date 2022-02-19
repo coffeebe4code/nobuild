@@ -388,7 +388,10 @@ void update_results() {
         CONCAT("target/nobuild/", features[i].elems[0], ".report"));
     FILE *fp = fdopen(fd, "r");
     int number;
-    fscanf(fp, "%d", &number);
+    if (fscanf(fp, "%d", &number) == 0) {
+      PANIC("couldn't write to file %s",
+            CONCAT("target/nobuild/", features[i].elems[0], ".report"));
+    }
     results.passed_total += number;
     fclose(fp);
   }
