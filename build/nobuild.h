@@ -538,7 +538,6 @@ void handle_args(int argc, char **argv) {
       break;
     }
     case 'r': {
-      CLEAN();
       release();
       break;
     }
