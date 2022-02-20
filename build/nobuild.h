@@ -105,7 +105,7 @@ void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void manual_deps(Cstr feature, Cstr_Array deps);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
-void handle_args(int argc, char **argv);
+int handle_args(int argc, char **argv);
 void make_feature(Cstr val);
 void write_report();
 void create_folders();
@@ -516,7 +516,7 @@ void write_report(Cstr file) {
   fclose(fp);
 }
 
-void handle_args(int argc, char **argv) {
+int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
@@ -568,6 +568,7 @@ void handle_args(int argc, char **argv) {
     debug();
     RETURN();
   }
+  return 0;
 }
 
 void make_feature(Cstr feature) {
