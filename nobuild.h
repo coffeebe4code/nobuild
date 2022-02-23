@@ -153,6 +153,13 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array macro_deps = cstr_array_make(__VA_ARGS__, NULL);                \
     manual_deps(first, macro_deps);                                            \
+    INFO("deps start <--- doesn't reach");                                     \
+    for (int i = 0; i < deps_count; i++) {                                     \
+      INFO("deps (%s)", deps[i].elems[0]);                                     \
+      for (int j = 0; j < deps[i].count; j++) {                                \
+        INFO(" nested (%s)", deps[i].elems[j]);                                \
+      }                                                                        \
+    }                                                                          \
   } while (0)
 
 #define CMD(...)                                                               \
@@ -216,6 +223,9 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
+    for (int i = 0; i < feature_count; i++) {                                  \
+      INFO("feature (%s)", features[i].elems[0]);                              \
+    }                                                                          \
   } while (0)
 
 #define BOOTSTRAP(argc, argv)                                                  \
@@ -383,6 +393,7 @@ void add_feature(Cstr_Array val) {
 Cstr_Array cstr_array_make(Cstr first, ...) {
   Cstr_Array result = CSTRS();
   size_t local_count = 0;
+  INFO("first (%s)", first);
 
   if (first == NULL) {
     return result;
@@ -391,8 +402,13 @@ Cstr_Array cstr_array_make(Cstr first, ...) {
   local_count += 1;
   va_list args;
   va_start(args, first);
+  INFO("cstr");
+
   for (Cstr next = va_arg(args, Cstr); next != NULL;
        next = va_arg(args, Cstr)) {
+    INFO("fail here on DEPS(things,stuff);");
+    INFO("All other cstr_array_make is fine");
+    INFO("next kabooms (%s)", next);
     local_count += 1;
   }
   va_end(args);
