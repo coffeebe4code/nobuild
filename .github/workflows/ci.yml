@@ -15,7 +15,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -O3 ./nobuild.c -o ./nobuild
+          $CC -Wall -Werror -Wextra -fsanitize=address, undefined ./nobuild.c -o ./nobuild
           ./nobuild --release
           if [[ $? == 2 ]]; then
             exit 0
