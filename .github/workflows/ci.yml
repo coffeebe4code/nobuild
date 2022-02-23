@@ -28,6 +28,26 @@ jobs:
           LD: ld
           CC: gcc
           CXX: g++
+  build-18-04-gcc:
+    runs-on: ubuntu-18.04
+    steps:
+      - uses: actions/checkout@v1
+      - name: build
+        run: |
+          set +e
+          $CC -O3 ./nobuild.c -o ./nobuild
+          ./nobuild --release
+          if [[ $? == 2 ]]; then
+            exit 0
+          fi
+          set -e
+          echo "there was an issue with nobuild"
+          exit 1
+        env:
+          AR: ar
+          LD: ld
+          CC: gcc
+          CXX: g++
   build-linux-clang:
     runs-on: ubuntu-latest
     steps:

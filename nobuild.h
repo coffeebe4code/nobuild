@@ -216,6 +216,9 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
+    for (int i = 0; i < feature_count; i++) {                                  \
+      INFO("feature (%s)", features[i].elems[0]);                              \
+    }                                                                          \
   } while (0)
 
 #define BOOTSTRAP(argc, argv)                                                  \
@@ -383,7 +386,6 @@ void add_feature(Cstr_Array val) {
 Cstr_Array cstr_array_make(Cstr first, ...) {
   Cstr_Array result = CSTRS();
   size_t local_count = 0;
-
   if (first == NULL) {
     return result;
   }
@@ -618,6 +620,7 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     Cstr_Array arr = cstr_array_make("-fPIC", "-o", output, "-c", NULL);
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
     obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
+    INFO("CMD: %s", cmd_show(obj_cmd));
     cmd_run_sync(obj_cmd);
   });
 }
@@ -632,7 +635,7 @@ void manual_deps(Cstr feature, Cstr_Array man_deps) {
   if (deps == NULL) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
-  deps[deps_count - 1] = cstr_array_make(feature);
+  deps[deps_count - 1] = cstr_array_make(feature, NULL);
   deps[deps_count - 1] = cstr_array_concat(deps[deps_count - 1], man_deps);
 }
 
@@ -697,11 +700,7 @@ void debug() { build(cstr_array_make(DCOMP, NULL)); }
 void build(Cstr_Array comp_flags) {
   for (int i = 0; i < feature_count; i++) {
     obj_build(features[i].elems[0], comp_flags);
-  }
-  for (int i = 0; i < feature_count; i++) {
     test_build(features[i].elems[0], comp_flags);
-  }
-  for (int i = 0; i < feature_count; i++) {
     EXEC_TESTS(features[i].elems[0]);
   }
   INFO("NOBUILD took ... %f", ((double)clock() - start) / CLOCKS_PER_SEC);
