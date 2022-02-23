@@ -83,8 +83,8 @@ static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
 static Cstr_Array *deps = NULL;
-static int feature_count = 0;
-static int deps_count = 0;
+static size_t feature_count = 0;
+static size_t deps_count = 0;
 static clock_t start = 0;
 
 // forwards
@@ -224,7 +224,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 #define BOOTSTRAP(argc, argv)                                                  \
   do {                                                                         \
     start = clock();                                                           \
-    create_folders();                                                          \
     handle_args(argc, argv);                                                   \
   } while (0)
 
@@ -350,13 +349,13 @@ Cstr cstr_no_ext(Cstr path) {
 void create_folders() {
   MKDIRS("target", "nobuild");
   MKDIRS("obj");
-  for (int i = 0; i < feature_count; i++) {
+  for (size_t i = 0; i < feature_count; i++) {
     MKDIRS(CONCAT("obj/", features[i].elems[0]));
   }
 }
 
 void update_results() {
-  for (int i = 0; i < feature_count; i++) {
+  for (size_t i = 0; i < feature_count; i++) {
     Fd fd = fd_open_for_read(
         CONCAT("target/nobuild/", features[i].elems[0], ".report"));
     FILE *fp = fdopen(fd, "r");
@@ -498,14 +497,16 @@ int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
+  INFO("argc count %d", argc);
 
-  while ((opt_char = getopt_long(argc, argv, "h:a:c:i:d:r", flags,
+  while ((opt_char = getopt_long(argc, argv, "h:c:a:i:d:r", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
     case 'c': {
       CLEAN();
       create_folders();
+      INFO("clean complete");
       break;
     }
     case 'i': {
@@ -514,7 +515,7 @@ int handle_args(int argc, char **argv) {
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
       INFO("building...");
-      for (int i = 0; i < all.count; i++) {
+      for (size_t i = 0; i < all.count; i++) {
         obj_build(all.elems[i], local_comp);
         test_build(all.elems[i], local_comp);
         EXEC_TESTS(all.elems[i]);
@@ -524,11 +525,13 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'r': {
+      create_folders();
       release();
       RETURN();
       break;
     }
     case 'd': {
+      create_folders();
       debug();
       RETURN();
       break;
@@ -549,6 +552,7 @@ int handle_args(int argc, char **argv) {
   if (found == 0) {
     WARN("No arguments passed to nobuild");
     WARN("Building all features");
+    create_folders();
     debug();
     RETURN();
   }
@@ -564,7 +568,6 @@ void make_feature(Cstr feature) {
   CMD("touch", lib);
   MKDIRS("tests");
   CMD("touch", test);
-  CMD("git", "add", inc, lib, test);
 }
 
 Cstr parse_feature_from_path(Cstr val) {
@@ -641,11 +644,11 @@ void manual_deps(Cstr feature, Cstr_Array man_deps) {
 
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed) {
   processed = cstr_array_append(processed, feature);
-  for (int i = 0; i < deps_count; i++) {
+  for (size_t i = 0; i < deps_count; i++) {
     if (strcmp(deps[i].elems[0], feature) == 0) {
-      for (int j = 1; j < deps[i].count; j++) {
+      for (size_t j = 1; j < deps[i].count; j++) {
         int found = 0;
-        for (int k = 0; k < processed.count; k++) {
+        for (size_t k = 0; k < processed.count; k++) {
           if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
             found += 1;
           }
@@ -685,8 +688,8 @@ void release() { build(cstr_array_make(RCOMP, NULL)); }
 Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed) {
   // processed = stuff
   processed = cstr_array_append(processed, parsed);
-  for (int i = 0; i < deps_count; i++) {
-    for (int j = 1; j < deps[i].count; j++) {
+  for (size_t i = 0; i < deps_count; i++) {
+    for (size_t j = 1; j < deps[i].count; j++) {
       if (strcmp(deps[i].elems[j], parsed) == 0) {
         processed = incremental_build(deps[i].elems[0], processed);
       }
@@ -698,7 +701,7 @@ Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed) {
 void debug() { build(cstr_array_make(DCOMP, NULL)); }
 
 void build(Cstr_Array comp_flags) {
-  for (int i = 0; i < feature_count; i++) {
+  for (size_t i = 0; i < feature_count; i++) {
     obj_build(features[i].elems[0], comp_flags);
     test_build(features[i].elems[0], comp_flags);
     EXEC_TESTS(features[i].elems[0]);
