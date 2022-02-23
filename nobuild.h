@@ -216,6 +216,9 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
+    for (int i = 0; i < feature_count; i++) {                                  \
+      INFO("feature (%s)", features[i].elems[0]);                              \
+    }                                                                          \
   } while (0)
 
 #define BOOTSTRAP(argc, argv)                                                  \
