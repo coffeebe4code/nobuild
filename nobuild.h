@@ -495,7 +495,7 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "h:c:a:i:d:r", flags,
+  while ((opt_char = getopt_long(argc, argv, "hca:i:dr", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
