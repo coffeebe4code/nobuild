@@ -216,9 +216,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
-    for (int i = 0; i < feature_count; i++) {                                  \
-      INFO("feature (%s)", features[i].elems[0]);                              \
-    }                                                                          \
   } while (0)
 
 #define BOOTSTRAP(argc, argv)                                                  \
@@ -497,7 +494,6 @@ int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
-  INFO("argc count %d", argc);
 
   while ((opt_char = getopt_long(argc, argv, "h:c:a:i:d:r", flags,
                                  &option_index)) != -1) {
@@ -506,7 +502,6 @@ int handle_args(int argc, char **argv) {
     case 'c': {
       CLEAN();
       create_folders();
-      INFO("clean complete");
       break;
     }
     case 'i': {
@@ -514,7 +509,6 @@ int handle_args(int argc, char **argv) {
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
-      INFO("building...");
       for (size_t i = 0; i < all.count; i++) {
         obj_build(all.elems[i], local_comp);
         test_build(all.elems[i], local_comp);
@@ -537,7 +531,6 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'a': {
-      INFO("optarg (%s)", optarg);
       make_feature(optarg);
       break;
     }
@@ -572,27 +565,15 @@ void make_feature(Cstr feature) {
 
 Cstr parse_feature_from_path(Cstr val) {
   Cstr noext = NOEXT(val);
-  size_t n = strlen(noext);
-  n -= 1;
-  size_t end;
-  while (n > 0 && noext[n] != '/') {
-    n -= 1;
+  char *split = strtok((char *)noext, "/");
+  if (strcmp(split, "tests") == 0 || strcmp(split, "include") == 0) {
+    split = strtok(NULL, "/");
+    return split;
   }
-  n -= 1;
-  end = n;
-  while (n > 0 && noext[n] != '/') {
-    n -= 1;
-  }
-  n += 1;
-  if (n > 0) {
-    size_t len = end - n + 1;
-    char *result = malloc(len * sizeof(char));
-    memcpy(result, &noext[n], len);
-    result[end] = '\0';
-    return result;
-  } else {
-    return noext;
-  }
+  size_t len = strlen(split);
+  char *result = malloc(len * sizeof(char));
+  memcpy(result, split, len);
+  return result;
 }
 
 void test_pid_wait(Pid pid) {
