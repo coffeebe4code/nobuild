@@ -15,7 +15,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -Wall -Werror -Wextra ./nobuild.c -o ./nobuild
+          $CC -Wall -Werror -Wextra -O3 ./nobuild.c -o ./nobuild
           ./nobuild --release
           if [[ $? == 2 ]]; then
             exit 0
