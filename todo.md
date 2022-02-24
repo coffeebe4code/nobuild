@@ -4,7 +4,6 @@
 - get cli working with single character inputs `-i`, and with multi params
 - finish documentation with demos
 - get LIBS and STATIC to work only for features declared as such
-- remove git add -A from --add
 - EXE support
 - include additional params for `ADD_FEATURE`
 - real world test assertions for a while.

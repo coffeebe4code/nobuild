@@ -579,8 +579,8 @@ Cstr parse_feature_from_path(Cstr val) {
     n -= 1;
   }
   n += 1;
+  INFO("n (%s)", &noext[n]);
   if (n > 0) {
-    INFO("str (%s)", &noext[n]);
     size_t len = end - n + 1;
     char *result = malloc(len * sizeof(char));
     memcpy(result, &noext[n], len);
