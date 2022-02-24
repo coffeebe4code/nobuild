@@ -502,7 +502,6 @@ int handle_args(int argc, char **argv) {
     case 'c': {
       CLEAN();
       create_folders();
-      INFO("clean complete");
       break;
     }
     case 'i': {
@@ -510,7 +509,6 @@ int handle_args(int argc, char **argv) {
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
-      INFO("building...");
       for (size_t i = 0; i < all.count; i++) {
         obj_build(all.elems[i], local_comp);
         test_build(all.elems[i], local_comp);
@@ -567,28 +565,15 @@ void make_feature(Cstr feature) {
 
 Cstr parse_feature_from_path(Cstr val) {
   Cstr noext = NOEXT(val);
-  size_t n = strlen(noext);
-  n -= 1;
-  size_t end;
-  while (n > 0 && noext[n] != '/') {
-    n -= 1;
+  char *split = strtok((char *)noext, "/");
+  if (strcmp(split, "tests") == 0 || strcmp(split, "include") == 0) {
+    split = strtok(NULL, "/");
+    return split;
   }
-  n -= 1;
-  end = n;
-  while (n > 0 && noext[n] != '/') {
-    n -= 1;
-  }
-  n += 1;
-  INFO("n (%s)", &noext[n]);
-  if (n > 0) {
-    size_t len = end - n + 1;
-    char *result = malloc(len * sizeof(char));
-    memcpy(result, &noext[n], len);
-    result[end] = '\0';
-    return result;
-  } else {
-    return noext;
-  }
+  size_t len = strlen(split);
+  char *result = malloc(len * sizeof(char));
+  memcpy(result, split, len);
+  return result;
 }
 
 void test_pid_wait(Pid pid) {
