@@ -216,9 +216,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
-    for (int i = 0; i < feature_count; i++) {                                  \
-      INFO("feature (%s)", features[i].elems[0]);                              \
-    }                                                                          \
   } while (0)
 
 #define BOOTSTRAP(argc, argv)                                                  \
@@ -497,7 +494,6 @@ int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
-  INFO("argc count %d", argc);
 
   while ((opt_char = getopt_long(argc, argv, "h:c:a:i:d:r", flags,
                                  &option_index)) != -1) {
@@ -537,7 +533,6 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'a': {
-      INFO("optarg (%s)", optarg);
       make_feature(optarg);
       break;
     }
@@ -585,6 +580,7 @@ Cstr parse_feature_from_path(Cstr val) {
   }
   n += 1;
   if (n > 0) {
+    INFO("str (%s)", &noext[n]);
     size_t len = end - n + 1;
     char *result = malloc(len * sizeof(char));
     memcpy(result, &noext[n], len);
