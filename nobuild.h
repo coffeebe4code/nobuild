@@ -140,6 +140,7 @@ void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 // macros
+
 #define FOREACH_ARRAY(type, elem, array, body)                                 \
   for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
     type *elem = &array.elems[elem_##index];                                   \
@@ -316,6 +317,19 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     }                                                                          \
     closedir(dir);                                                             \
   } while (0)
+
+#ifdef WITH_MOCKING
+#ifndef NO_MOCKING
+#define DECLARE_MOCK(type, name)                                               \
+  type __var_##name;                                                           \
+  type name();                                                                 \
+  type name() { return __var_##name; }
+#else
+#define DECLARE_MOCK(type, name) type __var__##name;
+#endif
+#define MOCK(name, value) __var_##name = value;
+
+#endif
 
 #endif // NOBUILD_H_
 
@@ -685,6 +699,7 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
       cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
                                 CONCAT("tests/", feature, ".c"), NULL));
 
+#ifdef NO_MOCKING
   Cstr_Array local_deps = CSTRS();
   local_deps = deps_get_manual(feature, local_deps);
   for (int j = local_deps.count - 1; j >= 0; j--) {
@@ -694,6 +709,12 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
       cmd.line = cstr_array_append(cmd.line, output);
     });
   }
+#else
+  FOREACH_FILE_IN_DIR(file, feature, {
+    Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
+    cmd.line = cstr_array_append(cmd.line, output);
+  });
+#endif
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
