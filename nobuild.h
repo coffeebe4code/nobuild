@@ -134,6 +134,12 @@ void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 // macros
+
+#define MOCK(type, name, ret)                                                  \
+  type name(...) { return ret }
+#define MOCK0(type, name, ret)                                                 \
+  type name() { return ret }
+
 #define FOREACH_ARRAY(type, elem, array, body)                                 \
   for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
     type *elem = &array.elems[elem_##index];                                   \

@@ -7,7 +7,7 @@
 int main(int argc, char **argv) {
   ADD_FEATURE("stuff");
   ADD_FEATURE("things");
-  DEPS("things", "stuff");
+  DEPS("things");
   BOOTSTRAP(argc, argv);
 
   return 0;
