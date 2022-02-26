@@ -76,6 +76,7 @@ typedef struct {
 static int test_result_status __attribute__((unused)) = 0;
 static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
                                 {"clean", no_argument, 0, 'c'},
+                                {"exe", required_argument, 0, 'e'},
                                 {"release", no_argument, 0, 'r'},
                                 {"add", required_argument, 0, 'a'},
                                 {"debug", no_argument, 0, 'd'}};
@@ -83,8 +84,10 @@ static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
 static Cstr_Array *deps = NULL;
+static Cstr_Array *exes = NULL;
 static size_t feature_count = 0;
 static size_t deps_count = 0;
+static size_t exes_count = 0;
 static clock_t start = 0;
 
 // forwards
@@ -102,11 +105,14 @@ void release();
 void debug();
 void build(Cstr_Array comp_flags);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
-void test_build(Cstr feature, Cstr_Array comp_flags);
+void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
+void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
 Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void manual_deps(Cstr feature, Cstr_Array deps);
+void add_feature(Cstr_Array val);
+void add_exe(Cstr_Array val);
 void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 int handle_args(int argc, char **argv);
@@ -136,9 +142,9 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 // macros
 
 #define MOCK(type, name, ret)                                                  \
-  type name(...) { return ret }
+  type name(...) { return ret; }
 #define MOCK0(type, name, ret)                                                 \
-  type name() { return ret }
+  type name() { return ret; }
 
 #define FOREACH_ARRAY(type, elem, array, body)                                 \
   for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
@@ -161,6 +167,12 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     manual_deps(first, macro_deps);                                            \
   } while (0)
 
+#define EXE(...)                                                               \
+  do {                                                                         \
+    Cstr_Array exes_macro = cstr_array_make(__VA_ARGS__, NULL);                \
+    add_exe(exes_macro);                                                       \
+  } while (0)
+
 #define CMD(...)                                                               \
   do {                                                                         \
     Cmd cmd = {.line = cstr_array_make(__VA_ARGS__, NULL)};                    \
@@ -175,24 +187,24 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   } while (0)
 
 #ifndef NOLIBS
-#define LIBS(feature, comp_flags)                                              \
+#define LIB(feature, comp_flags)                                               \
   do {                                                                         \
     CMD(CC, "-shared", "-o", CONCAT("target/lib", feature, ".so"),             \
         CONCAT("obj/", feature, ".o"));                                        \
   } while (0)
 #else
-#define LIBS(feature, links)                                                   \
+#define LIB(feature, links)                                                    \
   do {                                                                         \
   } while (0)
 #endif
 #ifndef NOSTATICS
-#define STATICS(feature, links)                                                \
+#define STATIC(feature, links)                                                 \
   do {                                                                         \
     CMD(AR, "-rc", CONCAT("target/lib", feature, ".a"),                        \
         CONCAT("obj/", feature, ".o"));                                        \
   } while (0)
 #else
-#define STATICS(feature, ...)                                                  \
+#define STATIC(feature, ...)                                                   \
   do {                                                                         \
   } while (0)
 #endif
@@ -385,6 +397,19 @@ void add_feature(Cstr_Array val) {
   memcpy(&features[feature_count - 1], &val, sizeof(Cstr_Array));
 }
 
+void add_exe(Cstr_Array val) {
+  if (exes == NULL) {
+    exes = malloc(sizeof(Cstr_Array));
+    exes_count++;
+  } else {
+    exes = realloc(exes, sizeof(Cstr_Array) * ++exes_count);
+  }
+  if (exes == NULL || val.count == 0) {
+    PANIC("could not allocate memory: %s", strerror(errno));
+  }
+  memcpy(&exes[exes_count - 1], &val, sizeof(Cstr_Array));
+}
+
 Cstr_Array cstr_array_make(Cstr first, ...) {
   Cstr_Array result = CSTRS();
   size_t local_count = 0;
@@ -501,8 +526,8 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "hca:i:dr", flags,
-                                 &option_index)) != -1) {
+  while ((opt_char =
+              getopt_long(argc, argv, "ca:i:dr", flags, &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
     case 'c': {
@@ -515,12 +540,24 @@ int handle_args(int argc, char **argv) {
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
+      Cstr_Array links = CSTRS();
       for (size_t i = 0; i < all.count; i++) {
+        for (size_t j = 0; j < feature_count; j++) {
+          if (strcmp(features[j].elems[0], all.elems[i]) == 0) {
+            for (size_t k = 1; k < features[j].count; k++) {
+              links = cstr_array_append(links, features[j].elems[k]);
+            }
+          }
+        }
+
         obj_build(all.elems[i], local_comp);
-        test_build(all.elems[i], local_comp);
+        test_build(all.elems[i], local_comp, links);
         EXEC_TESTS(all.elems[i]);
+        links.elems = NULL;
+        links.count = 0;
       }
-      INFO("NOBUILD took ... %f", ((double)clock() - start) / CLOCKS_PER_SEC);
+      INFO("NOBUILD took ... %f sec",
+           ((double)clock() - start) / CLOCKS_PER_SEC);
       RETURN();
       break;
     }
@@ -538,9 +575,6 @@ int handle_args(int argc, char **argv) {
     }
     case 'a': {
       make_feature(optarg);
-      break;
-    }
-    case 'h': {
       break;
     }
     default: {
@@ -649,8 +683,30 @@ Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed) {
   return processed;
 }
 
-void test_build(Cstr feature, Cstr_Array comp_flags) {
+void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
   Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+  cmd.line = cstr_array_concat(cmd.line, feature_links);
+  cmd.line = cstr_array_concat(cmd.line, comp_flags);
+  cmd.line = cstr_array_concat(
+      cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
+                                CONCAT("tests/", feature, ".c"), NULL));
+
+  Cstr_Array local_deps = CSTRS();
+  local_deps = deps_get_manual(feature, local_deps);
+  for (int j = local_deps.count - 1; j >= 0; j--) {
+    Cstr curr_feature = local_deps.elems[j];
+    FOREACH_FILE_IN_DIR(file, curr_feature, {
+      Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
+      cmd.line = cstr_array_append(cmd.line, output);
+    });
+  }
+  INFO("CMD: %s", cmd_show(cmd));
+  cmd_run_sync(cmd);
+}
+
+void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
+  Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+  cmd.line = cstr_array_concat(cmd.line, feature_links);
   cmd.line = cstr_array_concat(cmd.line, comp_flags);
   cmd.line = cstr_array_concat(
       cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
@@ -671,9 +727,7 @@ void test_build(Cstr feature, Cstr_Array comp_flags) {
 
 void release() { build(cstr_array_make(RCOMP, NULL)); }
 
-// parsed = stuff
 Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed) {
-  // processed = stuff
   processed = cstr_array_append(processed, parsed);
   for (size_t i = 0; i < deps_count; i++) {
     for (size_t j = 1; j < deps[i].count; j++) {
@@ -688,12 +742,19 @@ Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed) {
 void debug() { build(cstr_array_make(DCOMP, NULL)); }
 
 void build(Cstr_Array comp_flags) {
+  Cstr_Array links = CSTRS();
   for (size_t i = 0; i < feature_count; i++) {
+    for (size_t k = 1; k < features[i].count; k++) {
+      links = cstr_array_append(links, features[i].elems[k]);
+    }
+
     obj_build(features[i].elems[0], comp_flags);
-    test_build(features[i].elems[0], comp_flags);
+    test_build(features[i].elems[0], comp_flags, links);
     EXEC_TESTS(features[i].elems[0]);
+    links.elems = NULL;
+    links.count = 0;
   }
-  INFO("NOBUILD took ... %f", ((double)clock() - start) / CLOCKS_PER_SEC);
+  INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
   RESULTS();
 }
 
