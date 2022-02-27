@@ -140,7 +140,6 @@ void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 // macros
-
 #define FOREACH_ARRAY(type, elem, array, body)                                 \
   for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
     type *elem = &array.elems[elem_##index];                                   \
@@ -243,9 +242,22 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     test();                                                                    \
     if (test_result_status) {                                                  \
       results.failure_total += 1;                                              \
-      FAILLOG("file: %s => line: %d", __FILE__, __LINE__);                     \
       fflush(stdout);                                                          \
     } else {                                                                   \
+      results.passed_total += 1;                                               \
+      OKAY("Passed");                                                          \
+    }                                                                          \
+    test_result_status = 0;                                                    \
+  } while (0)
+
+#define RUNB(body)                                                             \
+  do {                                                                         \
+    test_result_status = 0;                                                    \
+    body if (test_result_status) {                                             \
+      results.failure_total += 1;                                              \
+      fflush(stdout);                                                          \
+    }                                                                          \
+    else {                                                                     \
       results.passed_total += 1;                                               \
       OKAY("Passed");                                                          \
     }                                                                          \
@@ -256,6 +268,26 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   do {                                                                         \
     if (!(assertion)) {                                                        \
       test_result_status = 1;                                                  \
+      FAILLOG("file: %s => line: %d => assertion: (%s)", __FILE__, __LINE__,   \
+              #assertion);                                                     \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_SIZE_EQ(left, right)                                            \
+  do {                                                                         \
+    if (left != right) {                                                       \
+      test_result_status = 1;                                                  \
+      FAILLOG("file: %s => line: %d => assertion: (%zu) == (%zu)", __FILE__,   \
+              __LINE__, left, right);                                          \
+    }                                                                          \
+  } while (0)
+
+#define ASSERT_STR_EQ(left, right)                                             \
+  do {                                                                         \
+    if (strcmp(left, right) != 0) {                                            \
+      test_result_status = 1;                                                  \
+      FAILLOG("file: %s => line: %d => assertion: (%s) == (%s)", __FILE__,     \
+              __LINE__, left, right);                                          \
     }                                                                          \
   } while (0)
 
@@ -274,7 +306,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 #define SHOULDB(message, body)                                                 \
   do {                                                                         \
     RUNLOG("It should... %s", message);                                        \
-    RUN(body);                                                                 \
+    RUNB(body);                                                                \
   } while (0)
 
 #define RETURN()                                                               \
@@ -699,7 +731,7 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
       cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
                                 CONCAT("tests/", feature, ".c"), NULL));
 
-#ifdef NO_MOCKING
+#ifdef NOMOCKS
   Cstr_Array local_deps = CSTRS();
   local_deps = deps_get_manual(feature, local_deps);
   for (int j = local_deps.count - 1; j >= 0; j--) {
@@ -924,7 +956,7 @@ void TABLOG(FILE *stream, Cstr tag, Cstr fmt, va_list args) {
   fprintf(stream, "\n");
 }
 
-void INFO(Cstr fmt, ...) {
+void INFO(Cstr fmt __attribute__((unused)), ...) {
 #ifndef NOINFO
   va_list args;
   va_start(args, fmt);
@@ -965,7 +997,7 @@ void RUNLOG(Cstr fmt, ...) {
   va_end(args);
 }
 
-void WARN(Cstr fmt, ...) {
+void WARN(Cstr fmt __attribute__((unused)), ...) {
 #ifndef NOWARN
   va_list args;
   va_start(args, fmt);
