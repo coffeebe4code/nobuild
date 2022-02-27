@@ -86,7 +86,7 @@ static Cstr_Array *deps = NULL;
 static Cstr_Array *exes = NULL;
 static size_t feature_count = 0;
 static size_t deps_count = 0;
-static size_t exes_count = 0;
+static size_t exe_count = 0;
 static clock_t start = 0;
 
 // forwards
@@ -106,7 +106,7 @@ void debug();
 void build(Cstr_Array comp_flags);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
-void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
+void exe_build(Cstr feature, Cstr_Array comp_flags);
 Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
@@ -441,14 +441,14 @@ void add_feature(Cstr_Array val) {
 void add_exe(Cstr_Array val) {
   if (exes == NULL) {
     exes = malloc(sizeof(Cstr_Array));
-    exes_count++;
+    exe_count++;
   } else {
-    exes = realloc(exes, sizeof(Cstr_Array) * ++exes_count);
+    exes = realloc(exes, sizeof(Cstr_Array) * ++exe_count);
   }
   if (exes == NULL || val.count == 0) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
-  memcpy(&exes[exes_count - 1], &val, sizeof(Cstr_Array));
+  memcpy(&exes[exe_count - 1], &val, sizeof(Cstr_Array));
 }
 
 Cstr_Array cstr_array_make(Cstr first, ...) {
@@ -567,7 +567,7 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "ceia:b:dr", flags,
+  while ((opt_char = getopt_long(argc, argv, "ce:ia:b:dr", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
@@ -658,6 +658,7 @@ void make_feature(Cstr feature) {
   Cstr inc = CONCAT("include/", feature, ".h");
   Cstr lib = CONCAT("src/", feature, "/lib.c");
   Cstr test = CONCAT("tests/", feature, ".c");
+  MKDIRS("include");
   CMD("touch", inc);
   MKDIRS(feature);
   CMD("touch", lib);
@@ -667,6 +668,7 @@ void make_feature(Cstr feature) {
 
 void make_exe(Cstr val) {
   Cstr exe = CONCAT("exes/", val, ".c");
+  MKDIRS("exes");
   CMD("touch", exe);
 }
 
@@ -779,23 +781,22 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
   cmd_run_sync(cmd);
 }
 
-void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
+void exe_build(Cstr exe, Cstr_Array comp_flags) {
   Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
-  cmd.line = cstr_array_concat(cmd.line, feature_links);
   cmd.line = cstr_array_concat(cmd.line, comp_flags);
   cmd.line = cstr_array_concat(
-      cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
-                                CONCAT("tests/", feature, ".c"), NULL));
+      cmd.line, cstr_array_make("-o", CONCAT("target/", exe),
+                                CONCAT("exes/", exe, ".c"), NULL));
 
-  Cstr_Array local_deps = CSTRS();
-  local_deps = deps_get_manual(feature, local_deps);
-  for (int j = local_deps.count - 1; j >= 0; j--) {
-    Cstr curr_feature = local_deps.elems[j];
-    FOREACH_FILE_IN_DIR(file, curr_feature, {
-      Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
-      cmd.line = cstr_array_append(cmd.line, output);
-    });
-  }
+  // Cstr_Array local_deps = CSTRS();
+  // local_deps = deps_get_manual(feature, local_deps);
+  // for (int j = local_deps.count - 1; j >= 0; j--) {
+  //  Cstr curr_feature = local_deps.elems[j];
+  //  FOREACH_FILE_IN_DIR(file, curr_feature, {
+  //    Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
+  //    cmd.line = cstr_array_append(cmd.line, output);
+  //  });
+  //}
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
@@ -828,6 +829,9 @@ void build(Cstr_Array comp_flags) {
     EXEC_TESTS(features[i].elems[0]);
     links.elems = NULL;
     links.count = 0;
+  }
+  for (size_t i = 0; i < exe_count; i++) {
+    exe_build(exes[i].elems[0], comp_flags);
   }
   INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
   RESULTS();
