@@ -74,12 +74,11 @@ typedef struct {
 
 // statics
 static int test_result_status __attribute__((unused)) = 0;
-static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
-                                {"clean", no_argument, 0, 'c'},
-                                {"exe", required_argument, 0, 'e'},
-                                {"release", no_argument, 0, 'r'},
-                                {"add", required_argument, 0, 'a'},
-                                {"debug", no_argument, 0, 'd'}};
+static struct option flags[] = {
+    {"build", required_argument, 0, 'b'}, {"init", required_argument, 0, 'i'},
+    {"clean", no_argument, 0, 'c'},       {"exe", required_argument, 0, 'e'},
+    {"release", no_argument, 0, 'r'},     {"add", required_argument, 0, 'a'},
+    {"debug", no_argument, 0, 'd'}};
 
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
@@ -91,6 +90,7 @@ static size_t exes_count = 0;
 static clock_t start = 0;
 
 // forwards
+void initialize();
 Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed);
 Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2);
 int cstr_ends_with(Cstr cstr, Cstr postfix);
@@ -117,6 +117,7 @@ void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 int handle_args(int argc, char **argv);
 void make_feature(Cstr val);
+void make_exe(Cstr val);
 void write_report();
 void create_folders();
 Cstr parse_feature_from_path(Cstr path);
@@ -224,7 +225,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     }                                                                          \
   } while (0)
 
-#define ADD_FEATURE(...)                                                       \
+#define FEATURE(...)                                                           \
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
@@ -294,7 +295,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 #define DESCRIBE(thing)                                                        \
   do {                                                                         \
     INFO("DESCRIBE: %s => %s", __FILE__, thing);                               \
-    ADD_FEATURE(thing);                                                        \
+    FEATURE(thing);                                                            \
   } while (0)
 
 #define SHOULDF(message, func)                                                 \
@@ -566,8 +567,8 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char =
-              getopt_long(argc, argv, "ca:i:dr", flags, &option_index)) != -1) {
+  while ((opt_char = getopt_long(argc, argv, "ceia:b:dr", flags,
+                                 &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
     case 'c': {
@@ -575,7 +576,7 @@ int handle_args(int argc, char **argv) {
       create_folders();
       break;
     }
-    case 'i': {
+    case 'b': {
       Cstr parsed = parse_feature_from_path(optarg);
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
@@ -617,6 +618,14 @@ int handle_args(int argc, char **argv) {
       make_feature(optarg);
       break;
     }
+    case 'e': {
+      make_exe(optarg);
+      break;
+    }
+    case 'i': {
+      make_exe(optarg);
+      break;
+    }
     default: {
       break;
     }
@@ -634,13 +643,18 @@ int handle_args(int argc, char **argv) {
 
 void make_feature(Cstr feature) {
   Cstr inc = CONCAT("include/", feature, ".h");
-  Cstr lib = CONCAT(feature, "/lib.c");
+  Cstr lib = CONCAT("src/", feature, "/lib.c");
   Cstr test = CONCAT("tests/", feature, ".c");
   CMD("touch", inc);
   MKDIRS(feature);
   CMD("touch", lib);
   MKDIRS("tests");
   CMD("touch", test);
+}
+
+void make_exe(Cstr val) {
+  Cstr exe = CONCAT("exes/", val, ".c");
+  CMD("touch", exe);
 }
 
 Cstr parse_feature_from_path(Cstr val) {
@@ -677,13 +691,14 @@ void test_pid_wait(Pid pid) {
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
-  FOREACH_FILE_IN_DIR(file, feature, {
+  FOREACH_FILE_IN_DIR(file, CONCAT("src/", feature), {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
     obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
     Cstr_Array arr = cstr_array_make("-fPIC", "-o", output, "-c", NULL);
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
-    obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
+    obj_cmd.line =
+        cstr_array_append(obj_cmd.line, CONCAT("src/", feature, "/", file));
     INFO("CMD: %s", cmd_show(obj_cmd));
     cmd_run_sync(obj_cmd);
   });
@@ -742,7 +757,7 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
     });
   }
 #else
-  FOREACH_FILE_IN_DIR(file, feature, {
+  FOREACH_FILE_IN_DIR(file, CONCAT("src/", feature), {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     cmd.line = cstr_array_append(cmd.line, output);
   });

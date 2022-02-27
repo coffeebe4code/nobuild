@@ -5,8 +5,8 @@
 #include "./nobuild.h"
 
 int main(int argc, char **argv) {
-  ADD_FEATURE("stuff");
-  ADD_FEATURE("things");
+  FEATURE("stuff");
+  FEATURE("things");
   DEPS("things", "stuff");
   BOOTSTRAP(argc, argv);
 
