@@ -75,7 +75,7 @@ typedef struct {
 // statics
 static int test_result_status __attribute__((unused)) = 0;
 static struct option flags[] = {
-    {"build", required_argument, 0, 'b'}, {"init", required_argument, 0, 'i'},
+    {"build", required_argument, 0, 'b'}, {"init", no_argument, 0, 'i'},
     {"clean", no_argument, 0, 'c'},       {"exe", required_argument, 0, 'e'},
     {"release", no_argument, 0, 'r'},     {"add", required_argument, 0, 'a'},
     {"debug", no_argument, 0, 'd'}};
@@ -623,7 +623,7 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'i': {
-      make_exe(optarg);
+      initialize();
       break;
     }
     default: {
@@ -639,6 +639,19 @@ int handle_args(int argc, char **argv) {
     RETURN();
   }
   return 0;
+}
+
+void initialize() {
+  create_folders();
+  MKDIRS("exes");
+  MKDIRS("src");
+  MKDIRS("tests");
+  Cmd cmd = {
+      .line = cstr_array_make(
+          "/bin/bash", "-c",
+          "echo -e '\n# nobuild\nnobuild\ntarget\ndeps\nobj\n' >> .gitignore",
+          NULL)};
+  cmd_run_sync(cmd);
 }
 
 void make_feature(Cstr feature) {

@@ -1,7 +1,8 @@
 callgrind.*
+
+# nobuild
 nobuild
 target
 deps
 obj
-*.old
-output.txt
+
