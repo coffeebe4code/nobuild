@@ -1,4 +1,4 @@
 #include "../include/things.h"
 #include "stdio.h"
 
-int main() { printf("add_4(2) = %d", 6); }
+int main() { printf("add_4(2) = %d", add_4(2)); }

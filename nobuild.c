@@ -5,10 +5,10 @@
 #include "./nobuild.h"
 
 int main(int argc, char **argv) {
-  FEATURE("stuff");
-  FEATURE("things");
+  FEATURE("stuff", "-lpthread");
+  FEATURE("things", "-lpthread");
   DEPS("things", "stuff");
-  EXE("test");
+  EXE("test", "things");
   BOOTSTRAP(argc, argv);
 
   return 0;

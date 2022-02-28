@@ -106,7 +106,7 @@ void debug();
 void build(Cstr_Array comp_flags);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
-void exe_build(Cstr feature, Cstr_Array comp_flags);
+void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps);
 Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
@@ -734,18 +734,26 @@ void manual_deps(Cstr feature, Cstr_Array man_deps) {
 }
 
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed) {
-  processed = cstr_array_append(processed, feature);
-  for (size_t i = 0; i < deps_count; i++) {
-    if (strcmp(deps[i].elems[0], feature) == 0) {
-      for (size_t j = 1; j < deps[i].count; j++) {
-        int found = 0;
-        for (size_t k = 0; k < processed.count; k++) {
-          if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
-            found += 1;
+  int proc_found = 0;
+  for (size_t i = 0; i < processed.count; i++) {
+    if (strcmp(processed.elems[i], feature) == 0) {
+      proc_found += 1;
+    }
+  }
+  if (proc_found == 0) {
+    processed = cstr_array_append(processed, feature);
+    for (size_t i = 0; i < deps_count; i++) {
+      if (strcmp(deps[i].elems[0], feature) == 0) {
+        for (size_t j = 1; j < deps[i].count; j++) {
+          int found = 0;
+          for (size_t k = 0; k < processed.count; k++) {
+            if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
+              found += 1;
+            }
           }
-        }
-        if (found == 0) {
-          processed = deps_get_manual(deps[i].elems[j], processed);
+          if (found == 0) {
+            processed = deps_get_manual(deps[i].elems[j], processed);
+          }
         }
       }
     }
@@ -781,22 +789,33 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
   cmd_run_sync(cmd);
 }
 
-void exe_build(Cstr exe, Cstr_Array comp_flags) {
+void exe_build(Cstr exe, Cstr_Array comp_flags, Cstr_Array exe_deps) {
   Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
   cmd.line = cstr_array_concat(cmd.line, comp_flags);
   cmd.line = cstr_array_concat(
       cmd.line, cstr_array_make("-o", CONCAT("target/", exe),
                                 CONCAT("exes/", exe, ".c"), NULL));
 
-  // Cstr_Array local_deps = CSTRS();
-  // local_deps = deps_get_manual(feature, local_deps);
-  // for (int j = local_deps.count - 1; j >= 0; j--) {
-  //  Cstr curr_feature = local_deps.elems[j];
-  //  FOREACH_FILE_IN_DIR(file, curr_feature, {
-  //    Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
-  //    cmd.line = cstr_array_append(cmd.line, output);
-  //  });
-  //}
+  Cstr_Array local_deps = CSTRS();
+  Cstr_Array local_links = CSTRS();
+  for (size_t i = 0; i < exe_deps.count; i++) {
+    local_deps = deps_get_manual(exe_deps.elems[i], local_deps);
+  }
+  for (size_t i = 0; i < local_deps.count; i++) {
+    for (size_t k = 0; k < feature_count; k++) {
+      if (strcmp(local_deps.elems[i], features[k].elems[0]) == 0) {
+        for (size_t l = 0; l < features[k].count; l++) {
+          local_links = cstr_array_append(local_links, features[k].elems[l]);
+          INFO("links (%s)", features[k].elems[l]);
+        }
+        FOREACH_FILE_IN_DIR(file, CONCAT("src/", features[k].elems[0]), {
+          Cstr output =
+              CONCAT("obj/", features[k].elems[0], "/", NOEXT(file), ".o");
+          cmd.line = cstr_array_append(cmd.line, output);
+        });
+      }
+    }
+  }
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
@@ -823,15 +842,20 @@ void build(Cstr_Array comp_flags) {
     for (size_t k = 1; k < features[i].count; k++) {
       links = cstr_array_append(links, features[i].elems[k]);
     }
-
     obj_build(features[i].elems[0], comp_flags);
     test_build(features[i].elems[0], comp_flags, links);
     EXEC_TESTS(features[i].elems[0]);
     links.elems = NULL;
     links.count = 0;
   }
+  Cstr_Array exe_deps = CSTRS();
   for (size_t i = 0; i < exe_count; i++) {
-    exe_build(exes[i].elems[0], comp_flags);
+    for (size_t k = 1; k < exes[i].count; k++) {
+      exe_deps = cstr_array_append(links, exes[i].elems[k]);
+    }
+    exe_build(exes[i].elems[0], comp_flags, exe_deps);
+    exe_deps.elems = NULL;
+    exe_deps.count = 0;
   }
   INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
   RESULTS();
