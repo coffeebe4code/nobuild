@@ -1,2 +1,2 @@
 #pragma once
-int add_2(const int val);
+extern int add_2(const int val);
