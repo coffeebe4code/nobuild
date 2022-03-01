@@ -83,7 +83,6 @@ static struct option flags[] = {
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
 static Cstr_Array libs = {.elems = 0, .count = 0};
-// static Cstr_Array statics = {.elems = 0, .count = 0};
 static Cstr_Array *deps = NULL;
 static Cstr_Array *exes = NULL;
 static size_t feature_count = 0;
