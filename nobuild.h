@@ -91,6 +91,7 @@ static size_t exe_count = 0;
 static clock_t start = 0;
 
 // forwards
+Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed);
 void initialize();
 Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed);
 Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2);
@@ -730,11 +731,20 @@ void obj_build(Cstr feature, Cstr_Array comp_flags) {
     cmd_run_sync(obj_cmd);
   });
   if (is_lib) {
+    Cstr_Array local_deps = CSTRS();
+    local_deps = deps_get_manual(feature, local_deps);
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
     obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
     Cstr_Array arr = cstr_array_make(
         "-shared", "-o", CONCAT("target/lib", feature, ".so"), NULL);
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
+    for (size_t i = local_deps.count - 1; i > 0; i--) {
+      FOREACH_FILE_IN_DIR(file, CONCAT("src/", local_deps.elems[i]), {
+        Cstr output =
+            CONCAT("obj/", local_deps.elems[i], "/", NOEXT(file), ".o");
+        objs = cstr_array_append(objs, output);
+      });
+    }
     obj_cmd.line = cstr_array_concat(obj_cmd.line, objs);
     INFO("CMD: %s", cmd_show(obj_cmd));
     cmd_run_sync(obj_cmd);

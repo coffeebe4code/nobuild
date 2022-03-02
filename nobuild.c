@@ -5,6 +5,7 @@
 int main(int argc, char **argv) {
   FEATURE("stuff", "-lpthread");
   FEATURE("things");
+  LIB("stuff");
   LIB("things");
   DEPS("things", "stuff");
   EXE("test", "things");
