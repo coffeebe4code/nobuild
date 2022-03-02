@@ -74,23 +74,25 @@ typedef struct {
 
 // statics
 static int test_result_status __attribute__((unused)) = 0;
-static struct option flags[] = {{"incremental", required_argument, 0, 'i'},
-                                {"clean", no_argument, 0, 'c'},
-                                {"exe", required_argument, 0, 'e'},
-                                {"release", no_argument, 0, 'r'},
-                                {"add", required_argument, 0, 'a'},
-                                {"debug", no_argument, 0, 'd'}};
+static struct option flags[] = {
+    {"build", required_argument, 0, 'b'}, {"init", no_argument, 0, 'i'},
+    {"clean", no_argument, 0, 'c'},       {"exe", required_argument, 0, 'e'},
+    {"release", no_argument, 0, 'r'},     {"add", required_argument, 0, 'a'},
+    {"debug", no_argument, 0, 'd'}};
 
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
+static Cstr_Array libs = {.elems = 0, .count = 0};
 static Cstr_Array *deps = NULL;
 static Cstr_Array *exes = NULL;
 static size_t feature_count = 0;
 static size_t deps_count = 0;
-static size_t exes_count = 0;
+static size_t exe_count = 0;
 static clock_t start = 0;
 
 // forwards
+Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed);
+void initialize();
 Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed);
 Cstr_Array cstr_array_concat(Cstr_Array cstrs1, Cstr_Array cstrs2);
 int cstr_ends_with(Cstr cstr, Cstr postfix);
@@ -106,7 +108,7 @@ void debug();
 void build(Cstr_Array comp_flags);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
-void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
+void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps);
 Cstr_Array deps_get_lifted(Cstr file, Cstr_Array processed);
 void lib_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
 void static_build(Cstr feature, Cstr_Array flags, Cstr_Array deps);
@@ -117,6 +119,7 @@ void pid_wait(Pid pid);
 void test_pid_wait(Pid pid);
 int handle_args(int argc, char **argv);
 void make_feature(Cstr val);
+void make_exe(Cstr val);
 void write_report();
 void create_folders();
 Cstr parse_feature_from_path(Cstr path);
@@ -180,28 +183,16 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     RM("obj");                                                                 \
   } while (0)
 
-#ifndef NOLIBS
-#define LIB(feature, comp_flags)                                               \
+#define LIB(feature)                                                           \
   do {                                                                         \
-    CMD(CC, "-shared", "-o", CONCAT("target/lib", feature, ".so"),             \
-        CONCAT("obj/", feature, ".o"));                                        \
+    libs = cstr_array_append(libs, feature);                                   \
   } while (0)
-#else
-#define LIB(feature, links)                                                    \
-  do {                                                                         \
-  } while (0)
-#endif
-#ifndef NOSTATICS
-#define STATIC(feature, links)                                                 \
+
+#define STATIC(feature)                                                        \
   do {                                                                         \
     CMD(AR, "-rc", CONCAT("target/lib", feature, ".a"),                        \
         CONCAT("obj/", feature, ".o"));                                        \
   } while (0)
-#else
-#define STATIC(feature, ...)                                                   \
-  do {                                                                         \
-  } while (0)
-#endif
 
 #define EXEC_TESTS(feature)                                                    \
   do {                                                                         \
@@ -224,7 +215,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     }                                                                          \
   } while (0)
 
-#define ADD_FEATURE(...)                                                       \
+#define FEATURE(...)                                                           \
   do {                                                                         \
     Cstr_Array val = cstr_array_make(__VA_ARGS__, NULL);                       \
     add_feature(val);                                                          \
@@ -294,7 +285,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 #define DESCRIBE(thing)                                                        \
   do {                                                                         \
     INFO("DESCRIBE: %s => %s", __FILE__, thing);                               \
-    ADD_FEATURE(thing);                                                        \
+    FEATURE(thing);                                                            \
   } while (0)
 
 #define SHOULDF(message, func)                                                 \
@@ -440,14 +431,14 @@ void add_feature(Cstr_Array val) {
 void add_exe(Cstr_Array val) {
   if (exes == NULL) {
     exes = malloc(sizeof(Cstr_Array));
-    exes_count++;
+    exe_count++;
   } else {
-    exes = realloc(exes, sizeof(Cstr_Array) * ++exes_count);
+    exes = realloc(exes, sizeof(Cstr_Array) * ++exe_count);
   }
   if (exes == NULL || val.count == 0) {
     PANIC("could not allocate memory: %s", strerror(errno));
   }
-  memcpy(&exes[exes_count - 1], &val, sizeof(Cstr_Array));
+  memcpy(&exes[exe_count - 1], &val, sizeof(Cstr_Array));
 }
 
 Cstr_Array cstr_array_make(Cstr first, ...) {
@@ -566,8 +557,8 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char =
-              getopt_long(argc, argv, "ca:i:dr", flags, &option_index)) != -1) {
+  while ((opt_char = getopt_long(argc, argv, "ce:ia:b:dr", flags,
+                                 &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
     case 'c': {
@@ -575,8 +566,9 @@ int handle_args(int argc, char **argv) {
       create_folders();
       break;
     }
-    case 'i': {
+    case 'b': {
       Cstr parsed = parse_feature_from_path(optarg);
+      INFO("parsed, (%s)", parsed);
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
@@ -596,6 +588,17 @@ int handle_args(int argc, char **argv) {
         links.elems = NULL;
         links.count = 0;
       }
+
+      Cstr_Array exe_deps = CSTRS();
+      for (size_t i = 0; i < exe_count; i++) {
+        for (size_t k = 1; k < exes[i].count; k++) {
+          exe_deps = cstr_array_append(links, exes[i].elems[k]);
+        }
+        exe_build(exes[i].elems[0], local_comp, exe_deps);
+        exe_deps.elems = NULL;
+        exe_deps.count = 0;
+      }
+
       INFO("NOBUILD took ... %f sec",
            ((double)clock() - start) / CLOCKS_PER_SEC);
       RETURN();
@@ -617,6 +620,14 @@ int handle_args(int argc, char **argv) {
       make_feature(optarg);
       break;
     }
+    case 'e': {
+      make_exe(optarg);
+      break;
+    }
+    case 'i': {
+      initialize();
+      break;
+    }
     default: {
       break;
     }
@@ -632,10 +643,24 @@ int handle_args(int argc, char **argv) {
   return 0;
 }
 
+void initialize() {
+  create_folders();
+  MKDIRS("exes");
+  MKDIRS("src");
+  MKDIRS("tests");
+  Cmd cmd = {
+      .line = cstr_array_make(
+          "/bin/bash", "-c",
+          "echo -e '\n# nobuild\nnobuild\ntarget\ndeps\nobj\n' >> .gitignore",
+          NULL)};
+  cmd_run_sync(cmd);
+}
+
 void make_feature(Cstr feature) {
   Cstr inc = CONCAT("include/", feature, ".h");
-  Cstr lib = CONCAT(feature, "/lib.c");
+  Cstr lib = CONCAT("src/", feature, "/lib.c");
   Cstr test = CONCAT("tests/", feature, ".c");
+  MKDIRS("include");
   CMD("touch", inc);
   MKDIRS(feature);
   CMD("touch", lib);
@@ -643,10 +668,17 @@ void make_feature(Cstr feature) {
   CMD("touch", test);
 }
 
+void make_exe(Cstr val) {
+  Cstr exe = CONCAT("exes/", val, ".c");
+  MKDIRS("exes");
+  CMD("touch", exe);
+}
+
 Cstr parse_feature_from_path(Cstr val) {
   Cstr noext = NOEXT(val);
   char *split = strtok((char *)noext, "/");
-  if (strcmp(split, "tests") == 0 || strcmp(split, "include") == 0) {
+  if (strcmp(split, "tests") == 0 || strcmp(split, "include") == 0 ||
+      strcmp(split, "src") == 0) {
     split = strtok(NULL, "/");
     return split;
   }
@@ -677,16 +709,46 @@ void test_pid_wait(Pid pid) {
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
-  FOREACH_FILE_IN_DIR(file, feature, {
+  Cstr_Array objs = CSTRS();
+  int is_lib = 0;
+  for (size_t i = 0; i < libs.count; i++) {
+    if (strcmp(libs.elems[i], feature) == 0) {
+      is_lib++;
+    }
+  }
+  FOREACH_FILE_IN_DIR(file, CONCAT("src/", feature), {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
+    if (is_lib) {
+      objs = cstr_array_append(objs, output);
+    }
     Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
     obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
     Cstr_Array arr = cstr_array_make("-fPIC", "-o", output, "-c", NULL);
     obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
-    obj_cmd.line = cstr_array_append(obj_cmd.line, CONCAT(feature, "/", file));
+    obj_cmd.line =
+        cstr_array_append(obj_cmd.line, CONCAT("src/", feature, "/", file));
     INFO("CMD: %s", cmd_show(obj_cmd));
     cmd_run_sync(obj_cmd);
   });
+  if (is_lib) {
+    Cstr_Array local_deps = CSTRS();
+    local_deps = deps_get_manual(feature, local_deps);
+    Cmd obj_cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
+    obj_cmd.line = cstr_array_concat(obj_cmd.line, comp_flags);
+    Cstr_Array arr = cstr_array_make(
+        "-shared", "-o", CONCAT("target/lib", feature, ".so"), NULL);
+    obj_cmd.line = cstr_array_concat(obj_cmd.line, arr);
+    for (size_t i = local_deps.count - 1; i > 0; i--) {
+      FOREACH_FILE_IN_DIR(file, CONCAT("src/", local_deps.elems[i]), {
+        Cstr output =
+            CONCAT("obj/", local_deps.elems[i], "/", NOEXT(file), ".o");
+        objs = cstr_array_append(objs, output);
+      });
+    }
+    obj_cmd.line = cstr_array_concat(obj_cmd.line, objs);
+    INFO("CMD: %s", cmd_show(obj_cmd));
+    cmd_run_sync(obj_cmd);
+  }
 }
 
 void manual_deps(Cstr feature, Cstr_Array man_deps) {
@@ -704,18 +766,26 @@ void manual_deps(Cstr feature, Cstr_Array man_deps) {
 }
 
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed) {
-  processed = cstr_array_append(processed, feature);
-  for (size_t i = 0; i < deps_count; i++) {
-    if (strcmp(deps[i].elems[0], feature) == 0) {
-      for (size_t j = 1; j < deps[i].count; j++) {
-        int found = 0;
-        for (size_t k = 0; k < processed.count; k++) {
-          if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
-            found += 1;
+  int proc_found = 0;
+  for (size_t i = 0; i < processed.count; i++) {
+    if (strcmp(processed.elems[i], feature) == 0) {
+      proc_found += 1;
+    }
+  }
+  if (proc_found == 0) {
+    processed = cstr_array_append(processed, feature);
+    for (size_t i = 0; i < deps_count; i++) {
+      if (strcmp(deps[i].elems[0], feature) == 0) {
+        for (size_t j = 1; j < deps[i].count; j++) {
+          int found = 0;
+          for (size_t k = 0; k < processed.count; k++) {
+            if (strcmp(processed.elems[k], deps[i].elems[j]) == 0) {
+              found += 1;
+            }
           }
-        }
-        if (found == 0) {
-          processed = deps_get_manual(deps[i].elems[j], processed);
+          if (found == 0) {
+            processed = deps_get_manual(deps[i].elems[j], processed);
+          }
         }
       }
     }
@@ -742,7 +812,7 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
     });
   }
 #else
-  FOREACH_FILE_IN_DIR(file, feature, {
+  FOREACH_FILE_IN_DIR(file, CONCAT("src/", feature), {
     Cstr output = CONCAT("obj/", feature, "/", NOEXT(file), ".o");
     cmd.line = cstr_array_append(cmd.line, output);
   });
@@ -751,23 +821,35 @@ void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
   cmd_run_sync(cmd);
 }
 
-void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links) {
+void exe_build(Cstr exe, Cstr_Array comp_flags, Cstr_Array exe_deps) {
   Cmd cmd = {.line = cstr_array_make(CC, CFLAGS, NULL)};
-  cmd.line = cstr_array_concat(cmd.line, feature_links);
   cmd.line = cstr_array_concat(cmd.line, comp_flags);
-  cmd.line = cstr_array_concat(
-      cmd.line, cstr_array_make("-o", CONCAT("target/", feature),
-                                CONCAT("tests/", feature, ".c"), NULL));
-
   Cstr_Array local_deps = CSTRS();
-  local_deps = deps_get_manual(feature, local_deps);
-  for (int j = local_deps.count - 1; j >= 0; j--) {
-    Cstr curr_feature = local_deps.elems[j];
-    FOREACH_FILE_IN_DIR(file, curr_feature, {
-      Cstr output = CONCAT("obj/", curr_feature, "/", NOEXT(file), ".o");
-      cmd.line = cstr_array_append(cmd.line, output);
-    });
+  Cstr_Array local_links = CSTRS();
+  Cstr_Array output_list = CSTRS();
+  for (size_t i = 0; i < exe_deps.count; i++) {
+    local_deps = deps_get_manual(exe_deps.elems[i], local_deps);
   }
+  for (size_t i = 0; i < local_deps.count; i++) {
+    for (size_t k = 0; k < feature_count; k++) {
+      if (strcmp(local_deps.elems[i], features[k].elems[0]) == 0) {
+        for (size_t l = 1; l < features[k].count; l++) {
+          local_links = cstr_array_append(local_links, features[k].elems[l]);
+        }
+        FOREACH_FILE_IN_DIR(file, CONCAT("src/", features[k].elems[0]), {
+          Cstr output =
+              CONCAT("obj/", features[k].elems[0], "/", NOEXT(file), ".o");
+          output_list = cstr_array_append(output_list, output);
+        });
+      }
+    }
+  }
+  cmd.line = cstr_array_concat(cmd.line, local_links);
+  cmd.line = cstr_array_concat(
+      cmd.line, cstr_array_make("-o", CONCAT("target/", exe),
+                                CONCAT("exes/", exe, ".c"), NULL));
+
+  cmd.line = cstr_array_concat(cmd.line, output_list);
   INFO("CMD: %s", cmd_show(cmd));
   cmd_run_sync(cmd);
 }
@@ -794,12 +876,20 @@ void build(Cstr_Array comp_flags) {
     for (size_t k = 1; k < features[i].count; k++) {
       links = cstr_array_append(links, features[i].elems[k]);
     }
-
     obj_build(features[i].elems[0], comp_flags);
     test_build(features[i].elems[0], comp_flags, links);
     EXEC_TESTS(features[i].elems[0]);
     links.elems = NULL;
     links.count = 0;
+  }
+  Cstr_Array exe_deps = CSTRS();
+  for (size_t i = 0; i < exe_count; i++) {
+    for (size_t k = 1; k < exes[i].count; k++) {
+      exe_deps = cstr_array_append(links, exes[i].elems[k]);
+    }
+    exe_build(exes[i].elems[0], comp_flags, exe_deps);
+    exe_deps.elems = NULL;
+    exe_deps.count = 0;
   }
   INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
   RESULTS();
