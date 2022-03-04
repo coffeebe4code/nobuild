@@ -25,7 +25,7 @@ After running the example, and getting an idea of [feature](#Feature_based_devel
  
 ## Advantages of nobuild
 
-- Simple and easy.
+- Simple.
 - Reducing the amount of dependencies.
 - You get to use C more.
 - Built in test framework to go with your built in no build.
