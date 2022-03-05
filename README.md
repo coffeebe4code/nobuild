@@ -14,7 +14,7 @@ The idea is that you should not need anything but a C compiler to build a C proj
 The framework should be able to make most of the decisions for you, it has easy support for dependency tracking, shared library, and binary packaging. It supports incremental builds and tests, reducing time from code change, to full dependency test execution.
 
 ## Begin
-Try it out right here:
+Try it out right here: 
 
 First clone the repository.
 
@@ -25,7 +25,7 @@ $ ./nobuild
 
 Explore [nobuild.c](./nobuild.c) file.
 
-After running the example, and getting an idea of [feature](#Feature_based_development) based development.
+After running the example, jump right to the [tutorial](./demo/tutorial.md).
  
 ## Advantages of nobuild
 
