@@ -162,8 +162,8 @@ int main() {
 
 Run `./nobuild --release` or `./nobuild -r`. All commands come with a short flag.
 
-> ./nobuild -r
 ```
+> ./nobuild -r
 [INFO] MKDIRS: target/nobuild
 [INFO] MKDIRS: obj
 [INFO] MKDIRS: obj/hello
@@ -189,8 +189,8 @@ Run `./nobuild --release` or `./nobuild -r`. All commands come with a short flag
 
 Right now, our hello feature, is just an object file. Let's make it an executable and a shared library. This will allow others to execute our amazing hello program, or use `hello` as a library in their own project.
 
-> ./nobuild -exe holler
 ```
+> ./nobuild --exe holler
 [INFO] MKDIRS: exes
 [INFO] CMD: touch exes/holler.c
 ```
@@ -220,8 +220,8 @@ int main(int argc, char **argv) {
 ```
   - after running `gcc ./nobuild.c -o ./nobuild`. You can run `./nobuild` once again.
 
-> ./nobuild -d
 ```
+> ./nobuild -d
 [INFO] MKDIRS: target/nobuild
 [INFO] MKDIRS: obj
 [INFO] MKDIRS: obj/hello
@@ -245,7 +245,9 @@ int main(int argc, char **argv) {
   - we also have a library that was placed in target. Distribute it to all your friends.
   - !NOTE! as of right now, if your exe has the same name as a feature. that features tests can't be ran independently.
 
-The bulk of the tutorial is complete. This may seem a bit much. I rely on shortcuts in my editor to accomplish everything without any thought. see the demo in [vim](./vim.md) or  [vscode](./vscode.md) to get an idea how painless using `nobuild` is. See a complete list of [options](./options.md) to read up on all commands, macros, and flags possible. For preparing production see [cicd](./cicd.md)
+## Complete?
+
+The bulk of the tutorial is complete. This may seem a bit much. I rely on shortcuts in my editor to accomplish everything without any thought. see the demo in [vim](./vim.md) or [vscode](./vscode.md) to get an idea how painless using `nobuild` is. See a complete list of [options](./options.md) to read up on all commands, macros, and flags possible. For preparing your code to production see [cicd](./cicd.md)
 
 The next part of the tutorial will cover the coolest feature in `nobuild` the incremental build.
 
