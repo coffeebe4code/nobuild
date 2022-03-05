@@ -1,6 +1,6 @@
 ## Tutorial
 
-This tutorial will take you from a new github project to a good overview of the `nobuild` framework. 
+This tutorial will take you from a new github project and provide a good overview of the `nobuild` framework, with real examples.
 
 If you don't already have a repository cloned or created locally. Follow this guide. [Github](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository)
 
@@ -95,18 +95,153 @@ int main(int argc, char **argv) {
 ```
 
   - sometimes, you might have additional dependencies defined outside of the project like `sdl2` or `boost` or much more commonly, `pthread`. `nobuild` doesn't add this FEATURE automatically to `nobuild.c`. (maybe future releases).
-    - here is where you would add extra linking dependencies. `FEATURE("hello","-lpthread");` says, any time you build a deployable, that uses hello, you need to have `pthread` linked with it.
+    - here is where you would add extra linking dependencies. `FEATURE("hello","-lpthread");`. This is saying: any time you build a deployable, that uses hello, you need to have `pthread` linked with it.
+  - run `gcc ./nobuild.c -o ./nobuild`. I have a simple key press combo bound to do this in my editor. You can do similar in your editor.
 
-7. Update our include file and library file
+7. Run `./nobuild`
+
+> ./nobuild
+```
+[WARN] No arguments passed to nobuild
+[WARN] Building all features
+[INFO] MKDIRS: target/nobuild
+[INFO] MKDIRS: obj
+[INFO] MKDIRS: obj/hello
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -fPIC -o obj/hello/lib.o -c src/hello/lib.c
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -o target/hello tests/hello.c obj/hello/lib.o
+/usr/bin/ld: /usr/lib/gcc/x86_64-linux-gnu/9/../../../x86_64-linux-gnu/Scrt1.o: in function `_start':
+(.text+0x24): undefined reference to `main'
+collect2: error: ld returned 1 exit status
+[ERRO] command exited with exit code 1
+```
+
+  - you will get errors from your compiler if your code has an issue. This issue here, is describing how the `tests/hello.c` file does not have a main function.
+
+7. Update your include file, library file, and test file.
 
 > ./include/hello.h
-```
+```c
 #pragma once
 
 int show_hello();
 ```
+
 > ./src/hello/lib.c
+```c
+#include <stdio.h>
+
+int show_hello() {
+  puts("Hello"); 
+  return 0;
+}
 ```
-int show_hello
+
+> ./tests/hello.c
+```c
+#define NOBUILD_IMPLEMENTATION
+#include "../include/hello.h"
+#include "../nobuild.h"
+#include <stdio.h>
+
+void test_add() { ASSERT(2 + 2 == 4); }
+
+int main() {
+  DESCRIBE("hello");
+  SHOULDF("add 2 + 2", test_add);
+  SHOULDB("compare two strings", { ASSERT_STR_EQ("hello", "hello"); });
+  RETURN();
+}
 ```
+
+8. Run `./nobuild --release` or `./nobuild -r`. All commands come with a short flag.
+
+> ./nobuild -r
+```
+[INFO] MKDIRS: target/nobuild
+[INFO] MKDIRS: obj
+[INFO] MKDIRS: obj/hello
+[INFO] CMD: gcc -Wall -Werror -std=c11 -O3 -fPIC -o obj/hello/lib.o -c src/hello/lib.c
+[INFO] CMD: gcc -Wall -Werror -std=c11 -O3 -o target/hello tests/hello.c obj/hello/lib.o
+[INFO] CMD: target/hello
+[INFO] DESCRIBE: tests/hello.c => hello
+      [RUN!] It should... add 2 + 2
+      [OKAY] Passed
+      [RUN!] It should... compare two strings
+      [OKAY] Passed
+[INFO] NOBUILD took ... 0.000370 sec
+[INFO] OKAY: tests passed 2
+[INFO] FAIL: tests failed 0
+[INFO] TOTAL: tests ran 2
+```
+
+  - success!. `./nobuild` with no arguments will assume you want the debug version. You can be explicit with `./nobuild -d`
+  - SHOULDB takes an inline body, SHOULDF takes a function name. Allowing you to break up your code and better read the flow in main.
+  - We can run and debug our tests, independently. All tests are created as an executable, try it. `./target/hello`. If you wanted debug symbols included, run `nobuild` with the debug flag. `./nobuild -d`
+
+9. Right now, our hello feature. is just an object file. Let's make it an executable and a shared library. This will allow others to execute our amazing hello program, or use it as a library in their own project.
+
+> ./nobuild -exe holler
+```
+[INFO] MKDIRS: exes
+[INFO] CMD: touch exes/holler.c
+```
+
+> ./exes/holler.c
+```c
+#include "../include/hello.h"
+
+int main() { 
+  show_hello();
+}
+```
+
+> ./nobuild.c
+```c
+#define NOBUILD_IMPLEMENTATION
+#define CFLAGS "-Wall", "-Werror", "-std=c11"
+#include "./nobuild.h"
+
+int main(int argc, char **argv) {
+  FEATURE("hello");
+  LIB("hello");
+  EXE("holler", "hello");
+  BOOTSTRAP(argc, argv);
+  return 0;
+}
+```
+  - after running `gcc ./nobuild.c -o ./nobuild`. You can run `./nobuild` once again.
+
+> ./nobuild -d
+```
+[INFO] MKDIRS: target/nobuild
+[INFO] MKDIRS: obj
+[INFO] MKDIRS: obj/hello
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -fPIC -o obj/hello/lib.o -c src/hello/lib.c
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -shared -o target/libhello.so obj/hello/lib.o
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -o target/hello tests/hello.c obj/hello/lib.o
+[INFO] CMD: target/hello
+[INFO] DESCRIBE: tests/hello.c => hello
+      [RUN!] It should... add 2 + 2
+      [OKAY] Passed
+      [RUN!] It should... compare two strings
+      [OKAY] Passed
+[INFO] CMD: gcc -Wall -Werror -std=c11 -g -O0 -o target/holler exes/holler.c obj/hello/lib.o
+[INFO] NOBUILD took ... 0.000564 sec
+[INFO] OKAY: tests passed 2
+[INFO] FAIL: tests failed 0
+[INFO] TOTAL: tests ran 2
+```
+
+  - we now have an executable which works exactly like we expected. Run it with `./target/holler`
+  - we also have a library that was placed in target. Distribute it to all your friends.
+  - !NOTE! as of right now, if your exe has the same name as a feature. that features tests can't be ran independently.
+
+The bulk of the tutorial is complete. This may seem a bit much. I rely on shortcuts in my editor to accomplish everything without any thought. see the demo in [vim](./vim.md) or  [vscode](./vscode.md) to get an idea how painless using `nobuild` is. See a complete list of [options](./options.md) to read up on all commands, macros, and flags possible.
+
+The next part of the tutorial will cover the coolest feature in `nobuild` the incremental build.
+
+## Incremental
+
+10.
+
 

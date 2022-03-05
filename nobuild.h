@@ -602,19 +602,17 @@ int handle_args(int argc, char **argv) {
 
       INFO("NOBUILD took ... %f sec",
            ((double)clock() - start) / CLOCKS_PER_SEC);
-      RETURN();
+      RESULTS();
       break;
     }
     case 'r': {
       create_folders();
       release();
-      RETURN();
       break;
     }
     case 'd': {
       create_folders();
       debug();
-      RETURN();
       break;
     }
     case 'a': {
@@ -639,7 +637,6 @@ int handle_args(int argc, char **argv) {
     WARN("Building all features");
     create_folders();
     debug();
-    RETURN();
   }
   return 0;
 }
