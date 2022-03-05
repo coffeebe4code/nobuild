@@ -649,6 +649,7 @@ void initialize() {
   MKDIRS("exes");
   MKDIRS("src");
   MKDIRS("tests");
+  MKDIRS("include");
   Cmd cmd = {
       .line = cstr_array_make(
           "/bin/bash", "-c",
@@ -663,7 +664,7 @@ void make_feature(Cstr feature) {
   Cstr test = CONCAT("tests/", feature, ".c");
   MKDIRS("include");
   CMD("touch", inc);
-  MKDIRS(feature);
+  MKDIRS(CONCAT("src/", feature));
   CMD("touch", lib);
   MKDIRS("tests");
   CMD("touch", test);

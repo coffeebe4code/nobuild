@@ -3,7 +3,9 @@
 Header only library for writing build and test recipes in an opinionated way in C.
 
 The original code started as a fork from [nobuild](https://github.com/tsoding/nobuild.git).
-Since then, there has been an entire test framework, and opinionated build strategy as well as helper command line tools for generating files and new features.
+An entire test framework has been added.
+An opinionated build strategy has been added.
+Numerous helper command line options have been added as well.
 
 ## Main idea
 
@@ -13,6 +15,8 @@ The framework should be able to make most of the decisions for you, it has easy 
 
 ## Begin
 Try it out right here:
+
+First clone the repository.
 
 ```console
 $ gcc ./nobuild.c -o ./nobuild
@@ -54,7 +58,7 @@ add a new feature to your project.
 ```c
 ./nobuild --add math
 ```
-this will automatically create an include file in the include directory `include/math.h`, create a directory and file at `math/lib.c`, create a new test file named `tests/math.c`.
+this will automatically create an include file in the include directory `include/math.h`, create a directory and file at `math/lib.c`, and create a new test file named `tests/math.c`.
 
 Some features could require additional includes or other linked libraries. Edit the `nobuild.c` file, and add the new feature, along with any dependencies.
 
@@ -67,18 +71,15 @@ If `math` has any dependencies within your project, include them, and nobuild wi
   DEPS("math", "add", "mul", div");
 ```
 
-After making any change to your projects `nobuild.c` file do not forget to rebuild the nobuild executable `$ gcc -O3 ./nobuild.c -o ./nobuild`
-
+After making any change to your projects `nobuild.c` file do not forget to rebuild the nobuild executable `$ gcc ./nobuild.c -o ./nobuild`
 
 Now, when running an incremental build, and changing the `div` feature, just run `./nobuild --build ./div/lib.c` or the shorter cli flag `./nobuild -b ./div/lib.c`
 
-The `div` feature will be rebuilt and tested, as well as `math` being rebuilt and tested!
+The `div` feature will be rebuilt and tested, as well as `math` being rebuilt and tested! All cascading dependencies are handled automatically.
 
-You will notice in this repository, the `stuff` feature has multiple files. This is called a fat feature. Build times could degrade if you use too many fat features with too many dependencies on other fat features. It is recommended to create many light small single file features for maximum efficiency.
+You will notice in this repository, the `stuff` feature has multiple files. This is called a fat feature. Build times could degrade if you use too many fat features with too many dependencies on other fat features. It is recommended to create many light small single file features for maximum efficiency. this may be deprecated in the future, to save build times.
 
-# I would like to know more
-
-## Using the test framework
+# Using the test framework
 
 define the `NOBUILD_IMPLEMENTATION` and `WITH_MOCKING` preprocessor command at the top of the file, to include the stb style header.
 
@@ -90,15 +91,11 @@ It is recommended to use mocking for everything that is defined outside of the f
 #include "../include/finance.h"
 #include "../nobuild.h"
 ```
+Example tests.
 
-We know that the `finance` feature uses `math` feature. We can mock the math feature calls.
-This is a bit of a contrived example. But, let's test our function for compound interest.
-
-```
-A = P(1 + (r/n))^(n*t)
-```
-
+`tests/finance.c`
 ```c
+#include "../include/finance.h"
 DECLARE_MOCK(double, pow);
 DECLARE_MOCK(double, mul);
 DECLARE_MOCK(double, add);
@@ -116,8 +113,13 @@ int main() {
   RETURN();
 }
 ```
+In this example, we are testing the `finance` feature. It uses our calculations from the `math` feature. Notice how we do not bring the math include into scope in our test file
 
-We know that we need to mock these function calls in order. We can declare mocks anywhere, in any order. I like to do it at the beginning of the `SHOULDB` macro.
+```
+A = P(1 + (r/n))^(n*t)
+```
+We know that we need to mock these function calls. I like to do all mocking at the beginning of the `SHOULDB` or `SHOULDF` macro. Mocking does not have to happen in the order they are ran for different functions.
+They do need to be done in order for multiple calls to the same function.
 
 ```c
   SHOULDB("calculate compound interest with rounding", {
@@ -137,6 +139,10 @@ We know that we need to mock these function calls in order. We can declare mocks
     ASSERT(calculate(val) == 11616.17);
   }
 ```
-This test is still useful, because we are testing to ensure the rounding to the nearest penny logic which is not done inside the math feature, is correct.
+The only two functions where order is important is that the `MOCK(mul, 11616.1678156)` is done any time after `MOCK(mul, 60)`.
 
+Although this is a contrived example, and we are mocking very simple things. It shows the separation of concerns between what you are mocking, and what logic is done in the `calculate` method. The only logic not done in the `math` feature is rounding the output to the nearest penny.
 
+# Tutorial
+
+visit the demo [turorial](./demo/tutorial.md)
