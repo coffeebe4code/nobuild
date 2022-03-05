@@ -6,10 +6,9 @@ If you don't already have a repository cloned or created locally. Follow this gu
 
 ## Start
 
-Copy the `./nobuild.h` file found at the root of this repository [nobuild.h](https://github.com/coffeebe4code/nobuild/blob/master/nobuild.h)
-  - to the root of your repository.
-Copy the starter `./demo/nobuild.c` file found in this demo folder [nobuild.c](https://github.com/coffeebe4code/nobuild/blob/master/demo/nobuild.c)
-  - to the root of your repository.
+Copy the `./nobuild.h` file found at the root of this repository [nobuild.h](https://github.com/coffeebe4code/nobuild/blob/master/nobuild.h) to the root of your repository.
+
+Copy the starter `./demo/nobuild.c` file found in this demo folder [nobuild.c](https://github.com/coffeebe4code/nobuild/blob/master/demo/nobuild.c) to the root of your repository.
   - the demo contents should appear as follows.
 
 > ./nobuild.c
