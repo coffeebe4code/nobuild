@@ -347,13 +347,11 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
   type __var_##name[255];                                                      \
   size_t __var_##name##_inc = 0;                                               \
   size_t __var_##name##_actual = 0;                                            \
-  type name();                                                                 \
-  size_t get_next_##name() { return __var_##name[__var_##name##_inc++]; }      \
-  type name() { return __var_##name[get_next_##name()]; }
+  type name() { return __var_##name[__var_##name##_inc++]; }
 #else
 #define DECLARE_MOCK(type, name) type __var__##name;
 #endif
-#define MOCK(name, value) __var_##name[__var_##name##_actual] = value;
+#define MOCK(name, value) __var_##name[__var_##name##_actual++] = value;
 
 #endif
 

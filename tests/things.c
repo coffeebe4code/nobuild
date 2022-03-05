@@ -11,6 +11,7 @@ DECLARE_MOCK(int, add_2);
 int main() {
   DESCRIBE("things");
   MOCK(add_2, 2);
+  MOCK(add_2, 2);
   SHOULDF("add 4 to input", test_add_4);
   RETURN();
 }
