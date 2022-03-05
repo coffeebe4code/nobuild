@@ -49,7 +49,9 @@ Keep in mind that [nobuild.h](./nobuild.h) is an [stb-style](https://github.com/
 2. Create `nobuild.c` in your project with build recipes. See our [nobuild.c](./nobuild.c) for an example.
 3. Bootstrap the `nobuild` executable:
    - `$ gcc -O3 ./nobuild.c -o ./nobuild` on POSIX systems
-4. Run the build: `$ ./nobuild`
+4. Initialize your project
+   - `$ ./nobuild --init`
+5. Run the build: `$ ./nobuild`
 
 # Feature based development
 nobuild uses feature based development.
@@ -58,12 +60,12 @@ add a new feature to your project.
 ```c
 ./nobuild --add math
 ```
-this will automatically create an include file in the include directory `include/math.h`, create a directory and file at `math/lib.c`, and create a new test file named `tests/math.c`.
+this will automatically create an include file in the include directory `include/math.h`, create a directory and file at `src/math/lib.c`, and create a new test file named `tests/math.c`.
 
 Some features could require additional includes or other linked libraries. Edit the `nobuild.c` file, and add the new feature, along with any dependencies.
 
 ```c
-  ADD_FEATURE("math","-lpthread");
+  FEATURE("math","-lpthread");
 ```
 
 If `math` has any dependencies within your project, include them, and nobuild will automatically link them when building tests.
@@ -73,7 +75,7 @@ If `math` has any dependencies within your project, include them, and nobuild wi
 
 After making any change to your projects `nobuild.c` file do not forget to rebuild the nobuild executable `$ gcc ./nobuild.c -o ./nobuild`
 
-Now, when running an incremental build, and changing the `div` feature, just run `./nobuild --build ./div/lib.c` or the shorter cli flag `./nobuild -b ./div/lib.c`
+Now, when running an incremental build, and changing the `div` feature, just run `./nobuild --build ./src/div/lib.c` or the shorter cli flag `./nobuild -b ./src/div/lib.c`
 
 The `div` feature will be rebuilt and tested, as well as `math` being rebuilt and tested! All cascading dependencies are handled automatically.
 
