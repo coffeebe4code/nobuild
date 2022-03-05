@@ -602,19 +602,17 @@ int handle_args(int argc, char **argv) {
 
       INFO("NOBUILD took ... %f sec",
            ((double)clock() - start) / CLOCKS_PER_SEC);
-      RETURN();
+      RESULTS();
       break;
     }
     case 'r': {
       create_folders();
       release();
-      RETURN();
       break;
     }
     case 'd': {
       create_folders();
       debug();
-      RETURN();
       break;
     }
     case 'a': {
@@ -639,7 +637,6 @@ int handle_args(int argc, char **argv) {
     WARN("Building all features");
     create_folders();
     debug();
-    RETURN();
   }
   return 0;
 }
@@ -649,6 +646,7 @@ void initialize() {
   MKDIRS("exes");
   MKDIRS("src");
   MKDIRS("tests");
+  MKDIRS("include");
   Cmd cmd = {
       .line = cstr_array_make(
           "/bin/bash", "-c",
@@ -663,7 +661,7 @@ void make_feature(Cstr feature) {
   Cstr test = CONCAT("tests/", feature, ".c");
   MKDIRS("include");
   CMD("touch", inc);
-  MKDIRS(feature);
+  MKDIRS(CONCAT("src/", feature));
   CMD("touch", lib);
   MKDIRS("tests");
   CMD("touch", test);

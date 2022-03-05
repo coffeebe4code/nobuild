@@ -15,7 +15,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -Wall -Werror -Wextra -O3 ./nobuild.c -o ./nobuild
+          gcc -Wall -Werror -Wextra -O3 ./nobuild.c -o ./nobuild
           ./nobuild --release
           if [[ $? == 2 ]]; then
             exit 0
@@ -23,11 +23,6 @@ jobs:
           set -e
           echo "there was an issue with nobuild"
           exit 1
-        env:
-          AR: ar
-          LD: ld
-          CC: gcc
-          CXX: g++
   build-18-04-gcc:
     runs-on: ubuntu-18.04
     steps:
@@ -35,7 +30,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -O3 ./nobuild.c -o ./nobuild
+          gcc -O3 ./nobuild.c -o ./nobuild
           ./nobuild --release
           if [[ $? == 2 ]]; then
             exit 0
@@ -43,11 +38,6 @@ jobs:
           set -e
           echo "there was an issue with nobuild"
           exit 1
-        env:
-          AR: ar
-          LD: ld
-          CC: gcc
-          CXX: g++
   build-linux-clang:
     runs-on: ubuntu-latest
     steps:
@@ -55,7 +45,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -O3 ./nobuild.c -o ./nobuild
+          clang -O3 ./nobuild.c -o ./nobuild
           ./nobuild --release 
           if [[ $? == 2 ]]; then
             exit 0
@@ -63,11 +53,6 @@ jobs:
           set -e
           echo "there was an issue with nobuild"
           exit 1
-        env:
-          AR: llvm-ar
-          LD: llvm-link
-          CC: clang
-          CXX: clang++
   build-macos:
     runs-on: macOS-latest
     steps:
@@ -75,7 +60,7 @@ jobs:
       - name: build
         run: |
           set +e
-          $CC -O3 ./nobuild.c -o ./nobuild
+          clang -O3 ./nobuild.c -o ./nobuild
           ./nobuild --release
           if [[ $? == 2 ]]; then
             exit 0
@@ -83,8 +68,3 @@ jobs:
           set -e
           echo "there was an issue with nobuild"
           exit 1
-        env:
-          AR: llvm-ar
-          LD: llvm-link
-          CC: clang
-          CXX: clang++
