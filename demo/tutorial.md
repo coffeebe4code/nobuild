@@ -23,7 +23,8 @@ int main(int argc, char **argv) {
 }
 ```
   - if you wish to use a different compiler you can add another line `#define CC "clang"`
-  - the file structure should appear as follows. You may or may not have the LICENSE, .gitignore, and README depending on if you initialized your own git repo, or did it through github in the browser.
+
+The file structure should appear as below. 
 
 ```
 > ls -a
@@ -34,6 +35,10 @@ README.md
 nobuild.h
 nobuild.c
 ```
+
+  - you may or may not have the LICENSE, .gitignore, and README depending on if you initialized your own git repo, or did it through github in the browser.
+
+## Build nobuild
 
 Build `nobuild`. You will have to do this any time, you modify your `./nobuild.c` file!
 
@@ -61,6 +66,7 @@ Initialize your repository as a `nobuild` project.
     - `target` will contain all your deliverable or meaningful deployments. Binaries, Shared Libraries, Static Libraries, tests, etc.
     - `include` will contain all your include files.
 
+## Adding features
 Add your first feature.
 
 ```
