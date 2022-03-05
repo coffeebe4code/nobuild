@@ -6,9 +6,9 @@ If you don't already have a repository cloned or created locally. Follow this gu
 
 ## Start
 
-1. Copy the `./nobuild.h` file found at the root of this repository [nobuild.h](https://github.com/coffeebe4code/nobuild/blob/master/nobuild.h)
+Copy the `./nobuild.h` file found at the root of this repository [nobuild.h](https://github.com/coffeebe4code/nobuild/blob/master/nobuild.h)
   - to the root of your repository.
-2. Copy the starter `./demo/nobuild.c` file found in this demo folder [nobuild.c](https://github.com/coffeebe4code/nobuild/blob/master/demo/nobuild.c)
+Copy the starter `./demo/nobuild.c` file found in this demo folder [nobuild.c](https://github.com/coffeebe4code/nobuild/blob/master/demo/nobuild.c)
   - to the root of your repository.
   - the demo contents should appear as follows.
 
@@ -36,13 +36,13 @@ nobuild.h
 nobuild.c
 ```
 
-3. Build `nobuild`. You will have to do this any time, you modify your `./nobuild.c` file!
+Build `nobuild`. You will have to do this any time, you modify your `./nobuild.c` file!
 
 ```
 > gcc ./nobuild.c -o ./nobuild
 ```
 
-4. Initialize your repository as a `nobuild` project.
+Initialize your repository as a `nobuild` project.
 
 ```
 > ./nobuild --init
@@ -62,7 +62,7 @@ nobuild.c
     - `target` will contain all your deliverable or meaningful deployments. Binaries, Shared Libraries, Static Libraries, tests, etc.
     - `include` will contain all your include files.
 
-5. Add your first feature.
+Add your first feature.
 
 ```
 > ./nobuild --add hello
@@ -74,10 +74,10 @@ nobuild.c
 [INFO] CMD: touch tests/hello.c
 ```
 
-  - this created a new folder in the `src` directory, a test file, an include file, and an empty c file.
-  - you will notice that the output has a lot of the same information when we ran `--init`. This is because we are being safe and making sure that those folders exist, if not, they are created. We can suppress `[INFO]` logs by adding `#define NOINFO` at the top of our `nobuild.c` file. The next step will show where, because we arent done with adding a new feature.
+    - this created a new folder in the `src` directory, a test file, an include file, and an empty c file.
+    - you will notice that the output has a lot of the same information when we ran `--init`. This is because we are being safe and making sure that those folders exist, if not, they are created. We can suppress `[INFO]` logs by adding `#define NOINFO` at the top of our `nobuild.c` file.
 
-6. Modify your `./nobuild.c` accordingly. Use your editor of choice.
+Modify your `./nobuild.c` accordingly. Use your editor of choice.
 
 > ./nobuild.c
 ```c
@@ -98,7 +98,7 @@ int main(int argc, char **argv) {
     - here is where you would add extra linking dependencies. `FEATURE("hello","-lpthread");`. This is saying: any time you build a deployable, that uses hello, you need to have `pthread` linked with it.
   - run `gcc ./nobuild.c -o ./nobuild`. I have a simple key press combo bound to do this in my editor. You can do similar in your editor.
 
-7. Run `./nobuild`
+Run `./nobuild`
 
 > ./nobuild
 ```
@@ -117,7 +117,7 @@ collect2: error: ld returned 1 exit status
 
   - you will get errors from your compiler if your code has an issue. This issue here, is describing how the `tests/hello.c` file does not have a main function.
 
-7. Update your include file, library file, and test file.
+Update your include file, library file, and test file.
 
 > ./include/hello.h
 ```c
@@ -153,7 +153,7 @@ int main() {
 }
 ```
 
-8. Run `./nobuild --release` or `./nobuild -r`. All commands come with a short flag.
+Run `./nobuild --release` or `./nobuild -r`. All commands come with a short flag.
 
 > ./nobuild -r
 ```
@@ -178,7 +178,7 @@ int main() {
   - SHOULDB takes an inline body, SHOULDF takes a function name. Allowing you to break up your code and better read the flow in main.
   - We can run and debug our tests, independently. All tests are created as an executable, try it. `./target/hello`. If you wanted debug symbols included, run `nobuild` with the debug flag. `./nobuild -d`
 
-9. Right now, our hello feature. is just an object file. Let's make it an executable and a shared library. This will allow others to execute our amazing hello program, or use it as a library in their own project.
+Right now, our hello feature. is just an object file. Let's make it an executable and a shared library. This will allow others to execute our amazing hello program, or use it as a library in their own project.
 
 > ./nobuild -exe holler
 ```
@@ -242,6 +242,6 @@ The next part of the tutorial will cover the coolest feature in `nobuild` the in
 
 ## Incremental
 
-10.
+
 
 
