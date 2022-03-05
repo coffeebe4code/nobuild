@@ -68,18 +68,3 @@ jobs:
           set -e
           echo "there was an issue with nobuild"
           exit 1
-  build-mingw:
-    runs-on: windows-latest
-    steps:
-      - uses: egor-tensin/setup-mingw@v2
-      - name: build
-        run: |
-          set +e
-          gcc -O3 ./nobuild.c -o ./nobuild
-          ./nobuild --release
-          if [[ $? == 2 ]]; then
-            exit 0
-          fi
-          set -e
-          echo "there was an issue with nobuild"
-          exit 1
