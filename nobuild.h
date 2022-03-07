@@ -326,7 +326,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     struct dirent *dp = NULL;                                                  \
     DIR *dir = opendir(dirpath);                                               \
     if (dir == NULL) {                                                         \
-      PANIC("could not open directory %s: %s", dirpath, strerror(errno));      \
+      PANIC("could not open directory %s: %d", dirpath, errno);                \
     }                                                                          \
     errno = 0;                                                                 \
     while ((dp = readdir(dir))) {                                              \
@@ -336,7 +336,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
       }                                                                        \
     }                                                                          \
     if (errno > 0) {                                                           \
-      PANIC("could not read directory %s: %s", dirpath, strerror(errno));      \
+      PANIC("could not read directory %s: %d", dirpath, errno);                \
     }                                                                          \
     closedir(dir);                                                             \
   } while (0)
@@ -688,7 +688,7 @@ void test_pid_wait(Pid pid) {
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
-      PANIC("could not wait on command (pid %d): %s", pid, strerror(errno));
+      PANIC("could not wait on command (pid %d): %d", pid, errno);
     }
 
     if (WIFEXITED(wstatus)) {
@@ -698,8 +698,7 @@ void test_pid_wait(Pid pid) {
     }
 
     if (WIFSIGNALED(wstatus)) {
-      PANIC("command process was terminated by %s",
-            strsignal(WTERMSIG(wstatus)));
+      PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
 }
@@ -895,7 +894,7 @@ void pid_wait(Pid pid) {
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
-      PANIC("could not wait on command (pid %d): %s", pid, strerror(errno));
+      PANIC("could not wait on command (pid %d): %d", pid, errno);
     }
     if (WIFEXITED(wstatus)) {
       int exit_status = WEXITSTATUS(wstatus);
@@ -905,8 +904,7 @@ void pid_wait(Pid pid) {
       break;
     }
     if (WIFSIGNALED(wstatus)) {
-      PANIC("command process was terminated by %s",
-            strsignal(WTERMSIG(wstatus)));
+      PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
 }
@@ -921,19 +919,8 @@ Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
   }
   if (cpid == 0) {
     Cstr_Array args = cstr_array_append(cmd.line, NULL);
-    if (fdin) {
-      if (dup2(fileno(*fdin), STDIN_FILENO) < 0) {
-        PANIC("Could not setup stdin for child process: %s", strerror(errno));
-      }
-    }
-    if (fdout) {
-      if (dup2(fileno(*fdout), STDOUT_FILENO) < 0) {
-        PANIC("Could not setup stdout for child process: %s", strerror(errno));
-      }
-    }
     if (execvp(args.elems[0], (char *const *)args.elems) < 0) {
-      PANIC("Could not exec child process: %s: %s", cmd_show(cmd),
-            strerror(errno));
+      PANIC("Could not exec child process: %s: %d", cmd_show(cmd), errno);
     }
   }
   return cpid;
