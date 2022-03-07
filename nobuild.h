@@ -54,7 +54,7 @@
 
 // typedefs
 typedef pid_t Pid;
-typedef int Fd;
+typedef FILE *Fd;
 typedef const char *Cstr;
 typedef struct {
   short failure_total;
@@ -124,7 +124,7 @@ void write_report();
 void create_folders();
 Cstr parse_feature_from_path(Cstr path);
 Cstr cmd_show(Cmd cmd);
-Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout);
+Pid cmd_run_async(Cmd cmd);
 void cmd_run_sync(Cmd cmd);
 void test_run_sync(Cmd cmd);
 int path_is_dir(Cstr path);
@@ -326,7 +326,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
     struct dirent *dp = NULL;                                                  \
     DIR *dir = opendir(dirpath);                                               \
     if (dir == NULL) {                                                         \
-      PANIC("could not open directory %s: %s", dirpath, strerror(errno));      \
+      PANIC("could not open directory %s: %d", dirpath, errno);                \
     }                                                                          \
     errno = 0;                                                                 \
     while ((dp = readdir(dir))) {                                              \
@@ -336,7 +336,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
       }                                                                        \
     }                                                                          \
     if (errno > 0) {                                                           \
-      PANIC("could not read directory %s: %s", dirpath, strerror(errno));      \
+      PANIC("could not read directory %s: %d", dirpath, errno);                \
     }                                                                          \
     closedir(dir);                                                             \
   } while (0)
@@ -405,14 +405,13 @@ void update_results() {
   for (size_t i = 0; i < feature_count; i++) {
     Fd fd = fd_open_for_read(
         CONCAT("target/nobuild/", features[i].elems[0], ".report"));
-    FILE *fp = fdopen(fd, "r");
     int number;
-    if (fscanf(fp, "%d", &number) == 0) {
+    if (fscanf((FILE *)fd, "%d", &number) == 0) {
       PANIC("couldn't write to file %s",
             CONCAT("target/nobuild/", features[i].elems[0], ".report"));
     }
     results.passed_total += number;
-    fclose(fp);
+    fclose(fd);
   }
 }
 
@@ -528,29 +527,27 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path) {
-  Fd result = open(path, O_RDONLY);
-  if (result < 0) {
-    PANIC("Could not open file %s: %s", path, strerror(errno));
+  Fd result = fopen(path, "r+");
+  if (result == NULL) {
+    PANIC("Could not open file %s: %d", path, errno);
   }
   return result;
 }
 
 Fd fd_open_for_write(Cstr path) {
-  Fd result = open(path, O_WRONLY | O_CREAT | O_TRUNC,
-                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (result < 0) {
-    PANIC("could not open file %s: %s", path, strerror(errno));
+  Fd result = fopen(path, "w+");
+  if (result == NULL) {
+    PANIC("could not open file %s: %d", path, errno);
   }
   return result;
 }
 
-void fd_close(Fd fd) { close(fd); }
+void fd_close(Fd fd) { fclose(fd); }
 
 void write_report(Cstr file) {
   Fd fd = fd_open_for_write(file);
-  FILE *fp = fdopen(fd, "a");
-  fprintf(fp, "%d", results.passed_total);
-  fclose(fp);
+  fprintf(fd, "%d", results.passed_total);
+  fclose(fd);
 }
 
 int handle_args(int argc, char **argv) {
@@ -691,7 +688,7 @@ void test_pid_wait(Pid pid) {
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
-      PANIC("could not wait on command (pid %d): %s", pid, strerror(errno));
+      PANIC("could not wait on command (pid %d): %d", pid, errno);
     }
 
     if (WIFEXITED(wstatus)) {
@@ -701,8 +698,7 @@ void test_pid_wait(Pid pid) {
     }
 
     if (WIFSIGNALED(wstatus)) {
-      PANIC("command process was terminated by %s",
-            strsignal(WTERMSIG(wstatus)));
+      PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
 }
@@ -898,7 +894,7 @@ void pid_wait(Pid pid) {
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
-      PANIC("could not wait on command (pid %d): %s", pid, strerror(errno));
+      PANIC("could not wait on command (pid %d): %d", pid, errno);
     }
     if (WIFEXITED(wstatus)) {
       int exit_status = WEXITSTATUS(wstatus);
@@ -908,15 +904,14 @@ void pid_wait(Pid pid) {
       break;
     }
     if (WIFSIGNALED(wstatus)) {
-      PANIC("command process was terminated by %s",
-            strsignal(WTERMSIG(wstatus)));
+      PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
 }
 
 Cstr cmd_show(Cmd cmd) { return cstr_array_join(" ", cmd.line); }
 
-Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
+Pid cmd_run_async(Cmd cmd) {
   pid_t cpid = fork();
   if (cpid < 0) {
     PANIC("Could not fork child process: %s: %s", cmd_show(cmd),
@@ -924,26 +919,15 @@ Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
   }
   if (cpid == 0) {
     Cstr_Array args = cstr_array_append(cmd.line, NULL);
-    if (fdin) {
-      if (dup2(*fdin, STDIN_FILENO) < 0) {
-        PANIC("Could not setup stdin for child process: %s", strerror(errno));
-      }
-    }
-    if (fdout) {
-      if (dup2(*fdout, STDOUT_FILENO) < 0) {
-        PANIC("Could not setup stdout for child process: %s", strerror(errno));
-      }
-    }
     if (execvp(args.elems[0], (char *const *)args.elems) < 0) {
-      PANIC("Could not exec child process: %s: %s", cmd_show(cmd),
-            strerror(errno));
+      PANIC("Could not exec child process: %s: %d", cmd_show(cmd), errno);
     }
   }
   return cpid;
 }
 
-void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd, NULL, NULL)); }
-void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd, NULL, NULL)); }
+void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd)); }
+void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd)); }
 
 int path_is_dir(Cstr path) {
   struct stat statbuf = {0};
