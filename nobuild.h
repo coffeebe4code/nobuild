@@ -527,17 +527,17 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path) {
-  Fd result = fopen(path, "r");
+  Fd result = fopen(path, "r+");
   if (result == NULL) {
-    PANIC("Could not open file %s: %s", path, strerror(errno));
+    PANIC("Could not open file %s: %d", path, errno);
   }
   return result;
 }
 
 Fd fd_open_for_write(Cstr path) {
-  Fd result = fopen(path, "rw");
+  Fd result = fopen(path, "w+");
   if (result == NULL) {
-    PANIC("could not open file %s: %s", path, strerror(errno));
+    PANIC("could not open file %s: %d", path, errno);
   }
   return result;
 }
