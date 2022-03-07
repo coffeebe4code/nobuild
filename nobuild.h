@@ -54,7 +54,7 @@
 
 // typedefs
 typedef pid_t Pid;
-typedef int Fd;
+typedef FILE *Fd;
 typedef const char *Cstr;
 typedef struct {
   short failure_total;
@@ -405,14 +405,13 @@ void update_results() {
   for (size_t i = 0; i < feature_count; i++) {
     Fd fd = fd_open_for_read(
         CONCAT("target/nobuild/", features[i].elems[0], ".report"));
-    FILE *fp = fdopen(fd, "r");
     int number;
-    if (fscanf(fp, "%d", &number) == 0) {
+    if (fscanf((FILE *)fd, "%d", &number) == 0) {
       PANIC("couldn't write to file %s",
             CONCAT("target/nobuild/", features[i].elems[0], ".report"));
     }
     results.passed_total += number;
-    fclose(fp);
+    fclose(fd);
   }
 }
 
@@ -528,29 +527,27 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path) {
-  Fd result = open(path, O_RDONLY);
-  if (result < 0) {
+  Fd result = fopen(path, "r");
+  if (result == NULL) {
     PANIC("Could not open file %s: %s", path, strerror(errno));
   }
   return result;
 }
 
 Fd fd_open_for_write(Cstr path) {
-  Fd result = open(path, O_WRONLY | O_CREAT | O_TRUNC,
-                   S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-  if (result < 0) {
+  Fd result = fopen(path, "rw");
+  if (result == NULL) {
     PANIC("could not open file %s: %s", path, strerror(errno));
   }
   return result;
 }
 
-void fd_close(Fd fd) { close(fd); }
+void fd_close(Fd fd) { fclose(fd); }
 
 void write_report(Cstr file) {
   Fd fd = fd_open_for_write(file);
-  FILE *fp = fdopen(fd, "a");
-  fprintf(fp, "%d", results.passed_total);
-  fclose(fp);
+  fprintf(fd, "%d", results.passed_total);
+  fclose(fd);
 }
 
 int handle_args(int argc, char **argv) {
@@ -925,12 +922,12 @@ Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
   if (cpid == 0) {
     Cstr_Array args = cstr_array_append(cmd.line, NULL);
     if (fdin) {
-      if (dup2(*fdin, STDIN_FILENO) < 0) {
+      if (dup2(fileno(*fdin), STDIN_FILENO) < 0) {
         PANIC("Could not setup stdin for child process: %s", strerror(errno));
       }
     }
     if (fdout) {
-      if (dup2(*fdout, STDOUT_FILENO) < 0) {
+      if (dup2(fileno(*fdout), STDOUT_FILENO) < 0) {
         PANIC("Could not setup stdout for child process: %s", strerror(errno));
       }
     }
