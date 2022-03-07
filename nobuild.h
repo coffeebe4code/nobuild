@@ -124,7 +124,7 @@ void write_report();
 void create_folders();
 Cstr parse_feature_from_path(Cstr path);
 Cstr cmd_show(Cmd cmd);
-Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout);
+Pid cmd_run_async(Cmd cmd);
 void cmd_run_sync(Cmd cmd);
 void test_run_sync(Cmd cmd);
 int path_is_dir(Cstr path);
@@ -911,7 +911,7 @@ void pid_wait(Pid pid) {
 
 Cstr cmd_show(Cmd cmd) { return cstr_array_join(" ", cmd.line); }
 
-Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
+Pid cmd_run_async(Cmd cmd) {
   pid_t cpid = fork();
   if (cpid < 0) {
     PANIC("Could not fork child process: %s: %s", cmd_show(cmd),
@@ -926,8 +926,8 @@ Pid cmd_run_async(Cmd cmd, Fd *fdin, Fd *fdout) {
   return cpid;
 }
 
-void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd, NULL, NULL)); }
-void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd, NULL, NULL)); }
+void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd)); }
+void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd)); }
 
 int path_is_dir(Cstr path) {
   struct stat statbuf = {0};
