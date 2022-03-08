@@ -566,7 +566,6 @@ int handle_args(int argc, char **argv) {
     }
     case 'b': {
       Cstr parsed = parse_feature_from_path(optarg);
-      INFO("parsed, (%s)", parsed);
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
       Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
