@@ -343,15 +343,21 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 #ifdef WITH_MOCKING
 #ifndef NO_MOCKING
+#define Comma ,
 #define DECLARE_MOCK(type, name)                                               \
   type __var_##name[255];                                                      \
   size_t __var_##name##_inc = 0;                                               \
   size_t __var_##name##_actual = 0;                                            \
   type name() { return __var_##name[__var_##name##_inc++]; }
-#else
-#define DECLARE_MOCK(type, name) type __var__##name;
-#endif
+#define DECLARE_MOCK_T(def, type) typedef struct def type;
 #define MOCK(name, value) __var_##name[__var_##name##_actual++] = value;
+#define MOCK_T(type, value, name) type name = value;
+#else
+#define DECLARE_MOCK(type, name)
+#define DECLARE_MOCK_T(def, type)
+#define MOCK(name, value)
+#define MOCK_T(type, value)
+#endif
 
 #endif
 
