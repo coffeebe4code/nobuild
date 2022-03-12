@@ -11,6 +11,9 @@
 #include <unistd.h>
 #define PATH_SEP "/"
 
+#ifndef PREFIX
+#define PREFIX "/usr/local/"
+#endif
 #ifndef CFLAGS
 #define CFLAGS "-Wall", "-Werror", "-std=c11"
 #endif
@@ -75,11 +78,11 @@ typedef struct {
 // statics
 static int test_result_status __attribute__((unused)) = 0;
 static struct option flags[] = {
-    {"build", required_argument, 0, 'b'}, {"init", no_argument, 0, 'i'},
-    {"clean", no_argument, 0, 'c'},       {"exe", required_argument, 0, 'e'},
-    {"release", no_argument, 0, 'r'},     {"add", required_argument, 0, 'a'},
-    {"debug", no_argument, 0, 'd'},       {"pack", required_argument, 0, 'p'},
-    {"test-nobuild", no_argument, 0, 't'}};
+    {"build", required_argument, 0, 'b'},   {"init", no_argument, 0, 'i'},
+    {"clean", no_argument, 0, 'c'},         {"exe", required_argument, 0, 'e'},
+    {"release", no_argument, 0, 'r'},       {"add", required_argument, 0, 'a'},
+    {"debug", no_argument, 0, 'd'},         {"pack", optional_argument, 0, 'p'},
+    {"total-internal", no_argument, 0, 't'}};
 
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
@@ -92,6 +95,7 @@ static size_t deps_count = 0;
 static size_t exe_count = 0;
 static size_t vend_count = 0;
 static clock_t start = 0;
+static char prefix[255];
 
 // forwards
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed);
@@ -600,7 +604,6 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'b': {
-      handle_vend("-d");
       Cstr parsed = parse_feature_from_path(optarg);
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
@@ -660,7 +663,11 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'p': {
-      package();
+      package(optarg);
+      break;
+    }
+    case 'v': {
+      package(optarg);
       break;
     }
     case 't': {
@@ -950,7 +957,6 @@ void handle_vend(Cstr nobuild_flag) {
       }
       pull(vends[i].elems[0], vends[i].elems[2]);
       build_vend(vends[i].elems[0], nobuild_flag);
-      INFO("errno %s", errno);
     }
     char sha;
     if (fscanf((FILE *)fp, "%s", &sha) == 0) {
