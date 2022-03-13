@@ -12,7 +12,7 @@
 #define PATH_SEP "/"
 
 #ifndef PREFIX
-#define PREFIX "/usr/local/"
+#define PREFIX "/usr/local"
 #endif
 #ifndef CFLAGS
 #define CFLAGS "-Wall", "-Werror", "-std=c11"
@@ -77,12 +77,15 @@ typedef struct {
 
 // statics
 static int test_result_status __attribute__((unused)) = 0;
-static struct option flags[] = {
-    {"build", required_argument, 0, 'b'},   {"init", no_argument, 0, 'i'},
-    {"clean", no_argument, 0, 'c'},         {"exe", required_argument, 0, 'e'},
-    {"release", no_argument, 0, 'r'},       {"add", required_argument, 0, 'a'},
-    {"debug", no_argument, 0, 'd'},         {"pack", optional_argument, 0, 'p'},
-    {"total-internal", no_argument, 0, 't'}};
+static struct option flags[] = {{"build", required_argument, 0, 'b'},
+                                {"init", no_argument, 0, 'i'},
+                                {"clean", no_argument, 0, 'c'},
+                                {"exe", required_argument, 0, 'e'},
+                                {"release", no_argument, 0, 'r'},
+                                {"add", required_argument, 0, 'a'},
+                                {"debug", no_argument, 0, 'd'},
+                                {"pack", optional_argument, 0, 'p'},
+                                {"total-internal", optional_argument, 0, 't'}};
 
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
@@ -95,7 +98,6 @@ static size_t deps_count = 0;
 static size_t exe_count = 0;
 static size_t vend_count = 0;
 static clock_t start = 0;
-static char prefix[255];
 
 // forwards
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed);
@@ -117,7 +119,7 @@ void handle_vend(Cstr nobuild_flag);
 void clone(Cstr name, Cstr repo);
 void debug();
 void build(Cstr_Array comp_flags);
-void package();
+void package(Cstr prefix);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
 void vend_build(Cstr vend, Cstr_Array comp_flags);
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
@@ -594,7 +596,7 @@ int handle_args(int argc, char **argv) {
   int found = 0;
   int option_index;
 
-  while ((opt_char = getopt_long(argc, argv, "tce:ia:b:drp:", flags,
+  while ((opt_char = getopt_long(argc, argv, "t:ce:ia:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
@@ -604,6 +606,7 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'b': {
+      handle_vend("-d");
       Cstr parsed = parse_feature_from_path(optarg);
       Cstr_Array all = CSTRS();
       all = incremental_build(parsed, all);
@@ -642,11 +645,13 @@ int handle_args(int argc, char **argv) {
     }
     case 'r': {
       create_folders();
+      handle_vend("-r");
       release();
       break;
     }
     case 'd': {
       create_folders();
+      handle_vend("-d");
       debug();
       break;
     }
@@ -663,10 +668,14 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'p': {
-      package(optarg);
-      break;
-    }
-    case 'v': {
+      if (optarg == NULL) {
+        option_index = argc - 1;
+        if (argv[option_index][0] == '-') {
+          optarg = PREFIX;
+        } else {
+          optarg = argv[option_index++];
+        }
+      }
       package(optarg);
       break;
     }
@@ -753,7 +762,23 @@ void test_pid_wait(Pid pid) {
     }
   }
 }
-void package() {}
+
+void package(Cstr prefix) {
+  MKDIRS(CONCAT(prefix));
+  size_t len = strlen(prefix);
+  if (prefix[len - 1] != '/') {
+    prefix = CONCAT(prefix, "/");
+  }
+  MKDIRS(CONCAT(prefix, "lib"));
+  MKDIRS(CONCAT(prefix, "include"));
+  for (size_t i = 0; i < libs.count; i++) {
+    CMD("cp", CONCAT("target/lib", libs.elems[i], ".so"),
+        CONCAT(prefix, "lib/"));
+    CMD("cp", CONCAT("include/", libs.elems[i], ".h"),
+        CONCAT(prefix, "include/"));
+  }
+  INFO("Installed");
+}
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
   Cstr_Array objs = CSTRS();
@@ -952,26 +977,47 @@ void handle_vend(Cstr nobuild_flag) {
     if (fp == NULL) {
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
-        INFO("1 %s 2 %s", vends[i].elems[0], vends[i].elems[1]);
         clone(vends[i].elems[0], vends[i].elems[1]);
       }
       pull(vends[i].elems[0], vends[i].elems[2]);
       build_vend(vends[i].elems[0], nobuild_flag);
+      Fd fd = fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
+      fprintf(fd, "%s", vends[i].elems[2]);
+      fclose(fd);
     }
+    rewind(fp);
     char sha;
+
     if (fscanf((FILE *)fp, "%s", &sha) == 0) {
+      PANIC("Couldn't extract sha from build cache");
     }
-    INFO("sha %s", &sha);
-    if (strcmp(vends[i].elems[2], &sha) != 0) {
-      // clone(vends[i].elems[1], nobuild_flag);
+    if (strncmp(vends[i].elems[2], &sha, strlen(&sha)) != 0) {
+      DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
+      if (dir == NULL) {
+        clone(vends[i].elems[0], vends[i].elems[1]);
+      }
+      pull(vends[i].elems[0], vends[i].elems[2]);
+      build_vend(vends[i].elems[0], nobuild_flag);
+      Fd fd = fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
+      fprintf(fd, "%s", vends[i].elems[2]);
+      fclose(fd);
     }
   }
 }
 
 void clone(Cstr name, Cstr repo) {
-  chdir("vend");
+  if (chdir("vend/") != 0) {
+    PANIC("Failed to change directory %s", "vend/");
+  }
   CMD("git", "clone", repo, name);
-  chdir("..");
+  if (chdir("..") != 0) {
+    PANIC("Failed to change directory %s", "../..");
+  }
+  char cwd[256];
+  if (getcwd(cwd, sizeof(cwd)) == NULL) {
+    PANIC("couldnt get cwd");
+  }
+  INFO("cwd %s", cwd);
 }
 
 void build(Cstr_Array comp_flags) {
