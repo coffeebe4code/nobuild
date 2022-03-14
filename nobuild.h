@@ -98,6 +98,7 @@ static size_t deps_count = 0;
 static size_t exe_count = 0;
 static size_t vend_count = 0;
 static clock_t start = 0;
+static char this_prefix[256] = {0};
 
 // forwards
 Cstr_Array deps_get_manual(Cstr feature, Cstr_Array processed);
@@ -676,11 +677,11 @@ int handle_args(int argc, char **argv) {
           optarg = argv[option_index++];
         }
       }
-      package(optarg);
+      strcpy(this_prefix, optarg);
+      package(this_prefix);
       break;
     }
     case 't': {
-      INFO("starting test run");
       handle_vend("-d");
       break;
     }
@@ -778,7 +779,7 @@ void package(Cstr prefix) {
     CMD("cp", CONCAT("include/", libs.elems[i], ".h"),
         CONCAT(prefix, "include/"));
   }
-  INFO("Installed");
+  INFO("Installed Successfully");
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
@@ -976,6 +977,7 @@ void handle_vend(Cstr nobuild_flag) {
   for (size_t i = 0; i < vend_count; i++) {
     Fd fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     if (fp == NULL) {
+      INFO("fp null");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
@@ -986,14 +988,14 @@ void handle_vend(Cstr nobuild_flag) {
       fprintf(fd, "%s", vends[i].elems[2]);
       fclose(fd);
     }
-    rewind(fp);
-    char sha;
+    fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
+    char sha[256];
 
-    if (fscanf((FILE *)fp, "%s", &sha) == 0) {
+    if (fscanf((FILE *)fp, "%s", sha) == 0) {
       PANIC("Couldn't extract sha from build cache");
     }
-    INFO("sha 1 %s, 2 %s", vends[i].elems[2], &sha);
-    if (strcmp(vends[i].elems[2], &sha) != 0) {
+    if (strcmp(vends[i].elems[2], sha) != 0) {
+      INFO("cmp fail");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
