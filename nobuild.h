@@ -967,6 +967,7 @@ void build_vend(Cstr name, Cstr nobuild_flag) {
     PANIC("Failed to change directory %s", CONCAT("vend/", name));
   }
   CMD(CC, "-O3", "./nobuild.c", "-o", "./nobuild");
+  INFO("this_prefix (%s)");
   CMD("./nobuild", nobuild_flag, "-p", this_prefix);
   if (chdir("../..") != 0) {
     PANIC("Failed to change directory %s", "../..");
