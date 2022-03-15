@@ -967,7 +967,7 @@ void build_vend(Cstr name, Cstr nobuild_flag) {
     PANIC("Failed to change directory %s", CONCAT("vend/", name));
   }
   CMD(CC, "-O3", "./nobuild.c", "-o", "./nobuild");
-  CMD("./nobuild", nobuild_flag, "-p");
+  CMD("./nobuild", nobuild_flag, "-p", this_prefix);
   if (chdir("../..") != 0) {
     PANIC("Failed to change directory %s", "../..");
   }
@@ -977,7 +977,6 @@ void handle_vend(Cstr nobuild_flag) {
   for (size_t i = 0; i < vend_count; i++) {
     Fd fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     if (fp == NULL) {
-      INFO("fp null");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
@@ -995,7 +994,6 @@ void handle_vend(Cstr nobuild_flag) {
       PANIC("Couldn't extract sha from build cache");
     }
     if (strcmp(vends[i].elems[2], sha) != 0) {
-      INFO("cmp fail");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
