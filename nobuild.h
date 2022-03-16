@@ -425,6 +425,7 @@ Cstr cstr_no_ext(Cstr path) {
 
 void create_folders() {
   MKDIRS("target", "nobuild");
+  MKDIRS("vend");
   MKDIRS("obj");
   for (size_t i = 0; i < feature_count; i++) {
     MKDIRS(CONCAT("obj/", features[i].elems[0]));
