@@ -5,4 +5,5 @@ nobuild
 target
 deps
 obj
+vend
 

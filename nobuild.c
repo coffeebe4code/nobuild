@@ -5,6 +5,7 @@
 int main(int argc, char **argv) {
   FEATURE("stuff", "-lpthread");
   FEATURE("things");
+  VEND("cutils", "https://github.com/coffeebe4code/cutils", "origin/main");
   LIB("stuff");
   LIB("things");
   DEPS("things", "stuff");
