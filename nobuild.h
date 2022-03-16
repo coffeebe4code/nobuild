@@ -603,7 +603,7 @@ int handle_args(int argc, char **argv) {
   int d = 0;
   int p = 0;
   char opt_b[256] = {0};
-  this_prefix = PREFIX;
+  strcpy(this_prefix, PREFIX);
 
   while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drp::", flags,
                                  &option_index)) != -1) {
@@ -652,6 +652,7 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'p': {
+      memset(this_prefix, 0, sizeof this_prefix);
       if (optarg == NULL) {
         option_index = argc - 1;
         if (argv[option_index][0] == '-') {
