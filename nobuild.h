@@ -596,64 +596,34 @@ int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
+  int c, b, r, d, p = 0;
+  char opt_b[256] = {0};
 
   while ((opt_char = getopt_long(argc, argv, "t:ce:ia:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
+    INFO("opt char %c", opt_char);
     switch ((int)opt_char) {
     case 'c': {
-      CLEAN();
-      create_folders();
+      INFO("c");
+
+      c = 1;
       break;
     }
     case 'b': {
-      handle_vend("-d");
-      Cstr parsed = parse_feature_from_path(optarg);
-      Cstr_Array all = CSTRS();
-      all = incremental_build(parsed, all);
-      Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
-      Cstr_Array links = CSTRS();
-      for (size_t i = 0; i < all.count; i++) {
-        for (size_t j = 0; j < feature_count; j++) {
-          if (strcmp(features[j].elems[0], all.elems[i]) == 0) {
-            for (size_t k = 1; k < features[j].count; k++) {
-              links = cstr_array_append(links, features[j].elems[k]);
-            }
-          }
-        }
-
-        obj_build(all.elems[i], local_comp);
-        test_build(all.elems[i], local_comp, links);
-        EXEC_TESTS(all.elems[i]);
-        links.elems = NULL;
-        links.count = 0;
-      }
-
-      Cstr_Array exe_deps = CSTRS();
-      for (size_t i = 0; i < exe_count; i++) {
-        for (size_t k = 1; k < exes[i].count; k++) {
-          exe_deps = cstr_array_append(links, exes[i].elems[k]);
-        }
-        exe_build(exes[i].elems[0], local_comp, exe_deps);
-        exe_deps.elems = NULL;
-        exe_deps.count = 0;
-      }
-
-      INFO("NOBUILD took ... %f sec",
-           ((double)clock() - start) / CLOCKS_PER_SEC);
-      RESULTS();
+      INFO("b");
+      strcpy(opt_b, optarg);
+      b = 1;
       break;
     }
     case 'r': {
-      create_folders();
-      handle_vend("-r");
-      release();
+      INFO("r");
+      r = 1;
       break;
     }
     case 'd': {
-      create_folders();
-      handle_vend("-d");
-      debug();
+      INFO("d");
+      d = 1;
       break;
     }
     case 'a': {
@@ -669,6 +639,7 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'p': {
+      INFO("p");
       if (optarg == NULL) {
         option_index = argc - 1;
         if (argv[option_index][0] == '-') {
@@ -678,7 +649,7 @@ int handle_args(int argc, char **argv) {
         }
       }
       strcpy(this_prefix, optarg);
-      package(this_prefix);
+      p = 1;
       break;
     }
     case 't': {
@@ -689,6 +660,60 @@ int handle_args(int argc, char **argv) {
       break;
     }
     }
+  }
+  INFO("vals %d %d %d %d %d", c, b, r, d, p);
+  if (c) {
+    INFO("Here");
+    CLEAN();
+    create_folders();
+  }
+  if (b) {
+    handle_vend("-d");
+    Cstr parsed = parse_feature_from_path(opt_b);
+    Cstr_Array all = CSTRS();
+    all = incremental_build(parsed, all);
+    Cstr_Array local_comp = cstr_array_make(DCOMP, NULL);
+    Cstr_Array links = CSTRS();
+    for (size_t i = 0; i < all.count; i++) {
+      for (size_t j = 0; j < feature_count; j++) {
+        if (strcmp(features[j].elems[0], all.elems[i]) == 0) {
+          for (size_t k = 1; k < features[j].count; k++) {
+            links = cstr_array_append(links, features[j].elems[k]);
+          }
+        }
+      }
+
+      obj_build(all.elems[i], local_comp);
+      test_build(all.elems[i], local_comp, links);
+      EXEC_TESTS(all.elems[i]);
+      links.elems = NULL;
+      links.count = 0;
+    }
+    Cstr_Array exe_deps = CSTRS();
+    for (size_t i = 0; i < exe_count; i++) {
+      for (size_t k = 1; k < exes[i].count; k++) {
+        exe_deps = cstr_array_append(links, exes[i].elems[k]);
+      }
+      exe_build(exes[i].elems[0], local_comp, exe_deps);
+      exe_deps.elems = NULL;
+      exe_deps.count = 0;
+    }
+
+    INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
+    RESULTS();
+  }
+  if (r) {
+    create_folders();
+    handle_vend("-r");
+    release();
+  }
+  if (d) {
+    create_folders();
+    handle_vend("-d");
+    debug();
+  }
+  if (p) {
+    package(this_prefix);
   }
   if (found == 0) {
     WARN("No arguments passed to nobuild");
@@ -967,7 +992,7 @@ void build_vend(Cstr name, Cstr nobuild_flag) {
     PANIC("Failed to change directory %s", CONCAT("vend/", name));
   }
   CMD(CC, "-O3", "./nobuild.c", "-o", "./nobuild");
-  INFO("this_prefix (%s)");
+  INFO("this_prefix (%s)", this_prefix);
   CMD("./nobuild", nobuild_flag, "-p", this_prefix);
   if (chdir("../..") != 0) {
     PANIC("Failed to change directory %s", "../..");
