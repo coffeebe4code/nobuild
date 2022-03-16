@@ -596,33 +596,31 @@ int handle_args(int argc, char **argv) {
   int opt_char = -1;
   int found = 0;
   int option_index;
-  int c, b, r, d, p = 0;
+  int c = 0;
+  int b = 0;
+  int r = 0;
+  int d = 0;
+  int p = 0;
   char opt_b[256] = {0};
 
   while ((opt_char = getopt_long(argc, argv, "t:ce:ia:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
-    INFO("opt char %c", opt_char);
     switch ((int)opt_char) {
     case 'c': {
-      INFO("c");
-
       c = 1;
       break;
     }
     case 'b': {
-      INFO("b");
       strcpy(opt_b, optarg);
       b = 1;
       break;
     }
     case 'r': {
-      INFO("r");
       r = 1;
       break;
     }
     case 'd': {
-      INFO("d");
       d = 1;
       break;
     }
@@ -639,7 +637,6 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 'p': {
-      INFO("p");
       if (optarg == NULL) {
         option_index = argc - 1;
         if (argv[option_index][0] == '-') {
@@ -661,9 +658,7 @@ int handle_args(int argc, char **argv) {
     }
     }
   }
-  INFO("vals %d %d %d %d %d", c, b, r, d, p);
   if (c) {
-    INFO("Here");
     CLEAN();
     create_folders();
   }
@@ -992,7 +987,6 @@ void build_vend(Cstr name, Cstr nobuild_flag) {
     PANIC("Failed to change directory %s", CONCAT("vend/", name));
   }
   CMD(CC, "-O3", "./nobuild.c", "-o", "./nobuild");
-  INFO("this_prefix (%s)", this_prefix);
   CMD("./nobuild", nobuild_flag, "-p", this_prefix);
   if (chdir("../..") != 0) {
     PANIC("Failed to change directory %s", "../..");
