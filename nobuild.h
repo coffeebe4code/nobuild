@@ -81,6 +81,7 @@ static struct option flags[] = {{"build", required_argument, 0, 'b'},
                                 {"init", no_argument, 0, 'i'},
                                 {"clean", no_argument, 0, 'c'},
                                 {"exe", required_argument, 0, 'e'},
+                                {"fetch", required_argument, 0, 'f'},
                                 {"release", no_argument, 0, 'r'},
                                 {"add", required_argument, 0, 'a'},
                                 {"debug", no_argument, 0, 'd'},
@@ -602,8 +603,9 @@ int handle_args(int argc, char **argv) {
   int d = 0;
   int p = 0;
   char opt_b[256] = {0};
+  this_prefix = PREFIX;
 
-  while ((opt_char = getopt_long(argc, argv, "t:ce:ia:b:drp::", flags,
+  while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
@@ -634,6 +636,19 @@ int handle_args(int argc, char **argv) {
     }
     case 'i': {
       initialize();
+      break;
+    }
+    case 'f': {
+      for (size_t i = 0; i < vend_count; i++) {
+        if (strcmp(vends[i].elems[0], optarg) == 0) {
+          pull(vends[i].elems[0], vends[i].elems[2]);
+          build_vend(vends[i].elems[0], "-d");
+          Fd fd =
+              fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
+          fprintf(fd, "%s", vends[i].elems[2]);
+          fclose(fd);
+        }
+      }
       break;
     }
     case 'p': {
@@ -710,6 +725,7 @@ int handle_args(int argc, char **argv) {
   if (p) {
     package(this_prefix);
   }
+
   if (found == 0) {
     WARN("No arguments passed to nobuild");
     WARN("Building all features");
