@@ -1,6 +1,15 @@
 #ifndef NOBUILD_H_
 #define NOBUILD_H_
 
+#include <assert.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
 #include <dirent.h>
 #include <fcntl.h>
@@ -9,6 +18,327 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#else
+#include "windows.h"
+#include <direct.h>
+#include <process.h>
+
+// win getopt and getopt_long taken from https://github.com/takamin/win-c
+int getopt(int argc, char *const argv[], const char *optstring);
+
+#define no_argument 0
+#define required_argument 1
+#define optional_argument 2
+
+struct option {
+  const char *name;
+  int has_arg;
+  int *flag;
+  int val;
+};
+
+int getopt_long(int argc, char *const argv[], const char *optstring,
+                const struct option *longopts, int *longindex);
+/// windows specific garbage
+struct dirent {
+  char d_name[MAX_PATH + 1];
+};
+
+typedef struct DIR DIR;
+
+DIR *opendir(const char *dirpath);
+struct dirent *readdir(DIR *dirp);
+int closedir(DIR *dirp);
+
+LPSTR GetLastErrorAsString(void);
+
+LPSTR GetLastErrorAsString(void) {
+  // https://stackoverflow.com/questions/1387064/how-to-get-the-error-message-from-the-error-code-returned-by-getlasterror
+
+  DWORD errorMessageId = GetLastError();
+  assert(errorMessageId != 0);
+
+  LPSTR messageBuffer = NULL;
+
+  DWORD size = FormatMessage(
+
+      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+          FORMAT_MESSAGE_IGNORE_INSERTS,         // DWORD   dwFlags,
+      NULL,                                      // LPCVOID lpSource,
+      errorMessageId,                            // DWORD   dwMessageId,
+      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // DWORD   dwLanguageId,
+      (LPSTR)&messageBuffer,                     // LPTSTR  lpBuffer,
+      0,                                         // DWORD   nSize,
+      NULL                                       // va_list *Arguments
+  );
+
+  return messageBuffer;
+}
+
+struct DIR {
+  HANDLE hFind;
+  WIN32_FIND_DATA data;
+  struct dirent *dirent;
+};
+
+DIR *opendir(const char *dirpath) {
+  assert(dirpath);
+
+  char buffer[MAX_PATH];
+  snprintf(buffer, MAX_PATH, "%s\\*", dirpath);
+
+  DIR *dir = (DIR *)calloc(1, sizeof(DIR));
+
+  dir->hFind = FindFirstFile(buffer, &dir->data);
+  if (dir->hFind == INVALID_HANDLE_VALUE) {
+    errno = ENOSYS;
+    goto fail;
+  }
+
+  return dir;
+
+fail:
+  if (dir) {
+    free(dir);
+  }
+
+  return NULL;
+}
+
+struct dirent *readdir(DIR *dirp) {
+  assert(dirp);
+
+  if (dirp->dirent == NULL) {
+    dirp->dirent = (struct dirent *)calloc(1, sizeof(struct dirent));
+  } else {
+    if (!FindNextFile(dirp->hFind, &dirp->data)) {
+      if (GetLastError() != ERROR_NO_MORE_FILES) {
+        errno = ENOSYS;
+      }
+
+      return NULL;
+    }
+  }
+
+  memset(dirp->dirent->d_name, 0, sizeof(dirp->dirent->d_name));
+
+  strncpy(dirp->dirent->d_name, dirp->data.cFileName,
+          sizeof(dirp->dirent->d_name) - 1);
+
+  return dirp->dirent;
+}
+
+int closedir(DIR *dirp) {
+  assert(dirp);
+
+  if (!FindClose(dirp->hFind)) {
+    errno = ENOSYS;
+    return -1;
+  }
+
+  if (dirp->dirent) {
+    free(dirp->dirent);
+  }
+  free(dirp);
+
+  return 0;
+}
+char *optarg = 0;
+int optind = 1;
+int opterr = 1;
+int optopt = 0;
+
+int postpone_count = 0;
+int nextchar = 0;
+
+static void postpone(int argc, char *const argv[], int index) {
+  char **nc_argv = (char **)argv;
+  char *p = nc_argv[index];
+  int j = index;
+  for (; j < argc - 1; j++) {
+    nc_argv[j] = nc_argv[j + 1];
+  }
+  nc_argv[argc - 1] = p;
+}
+static int postpone_noopt(int argc, char *const argv[], int index) {
+  int i = index;
+  for (; i < argc; i++) {
+    if (*(argv[i]) == '-') {
+      postpone(argc, argv, index);
+      return 1;
+    }
+  }
+  return 0;
+}
+static int _getopt_(int argc, char *const argv[], const char *optstring,
+                    const struct option *longopts, int *longindex) {
+  while (1) {
+    int c;
+    const char *optptr = 0;
+    if (optind >= argc - postpone_count) {
+      c = 0;
+      optarg = 0;
+      break;
+    }
+    c = *(argv[optind] + nextchar);
+    if (c == '\0') {
+      nextchar = 0;
+      ++optind;
+      continue;
+    }
+    if (nextchar == 0) {
+      if (optstring[0] != '+' && optstring[0] != '-') {
+        while (c != '-') {
+          /* postpone non-opt parameter */
+          if (!postpone_noopt(argc, argv, optind)) {
+            break; /* all args are non-opt param */
+          }
+          ++postpone_count;
+          c = *argv[optind];
+        }
+      }
+      if (c != '-') {
+        if (optstring[0] == '-') {
+          optarg = argv[optind];
+          nextchar = 0;
+          ++optind;
+          return 1;
+        }
+        break;
+      } else {
+        if (strcmp(argv[optind], "--") == 0) {
+          optind++;
+          break;
+        }
+        ++nextchar;
+        if (longopts != 0 && *(argv[optind] + 1) == '-') {
+          char const *spec_long = argv[optind] + 2;
+          char const *pos_eq = strchr(spec_long, '=');
+          int spec_len =
+              (pos_eq == NULL ? strlen(spec_long) : pos_eq - spec_long);
+          int index_search = 0;
+          int index_found = -1;
+          const struct option *optdef = 0;
+          while (longopts->name != 0) {
+            if (strncmp(spec_long, longopts->name, spec_len) == 0) {
+              if (optdef != 0) {
+                if (opterr) {
+                  fprintf(stderr, "ambiguous option: %s\n", spec_long);
+                }
+                return '?';
+              }
+              optdef = longopts;
+              index_found = index_search;
+            }
+            longopts++;
+            index_search++;
+          }
+          if (optdef == 0) {
+            if (opterr) {
+              fprintf(stderr, "no such a option: %s\n", spec_long);
+            }
+            return '?';
+          }
+          switch (optdef->has_arg) {
+          case no_argument:
+            optarg = 0;
+            if (pos_eq != 0) {
+              if (opterr) {
+                fprintf(stderr, "no argument for %s\n", optdef->name);
+              }
+              return '?';
+            }
+            break;
+          case required_argument:
+            if (pos_eq == NULL) {
+              ++optind;
+              optarg = argv[optind];
+            } else {
+              optarg = (char *)pos_eq + 1;
+            }
+            break;
+          }
+          ++optind;
+          nextchar = 0;
+          if (longindex != 0) {
+            *longindex = index_found;
+          }
+          if (optdef->flag != 0) {
+            *optdef->flag = optdef->val;
+            return 0;
+          }
+          return optdef->val;
+        }
+        continue;
+      }
+    }
+    optptr = strchr(optstring, c);
+    if (optptr == NULL) {
+      optopt = c;
+      if (opterr) {
+        fprintf(stderr, "%s: invalid option -- %c\n", argv[0], c);
+      }
+      ++nextchar;
+      return '?';
+    }
+    if (*(optptr + 1) != ':') {
+      nextchar++;
+      if (*(argv[optind] + nextchar) == '\0') {
+        ++optind;
+        nextchar = 0;
+      }
+      optarg = 0;
+    } else {
+      nextchar++;
+      if (*(argv[optind] + nextchar) != '\0') {
+        optarg = argv[optind] + nextchar;
+      } else {
+        ++optind;
+        if (optind < argc - postpone_count) {
+          optarg = argv[optind];
+        } else {
+          optopt = c;
+          if (opterr) {
+            fprintf(stderr, "%s: option requires an argument -- %c\n", argv[0],
+                    c);
+          }
+          if (optstring[0] == ':' ||
+              (optstring[0] == '-' || optstring[0] == '+') &&
+                  optstring[1] == ':') {
+            c = ':';
+          } else {
+            c = '?';
+          }
+        }
+      }
+      ++optind;
+      nextchar = 0;
+    }
+    return c;
+  }
+
+  /* end of option analysis */
+
+  /* fix the order of non-opt params to original */
+  while ((argc - optind - postpone_count) > 0) {
+    postpone(argc, argv, optind);
+    ++postpone_count;
+  }
+
+  nextchar = 0;
+  postpone_count = 0;
+  return -1;
+}
+
+int getopt(int argc, char *const argv[], const char *optstring) {
+  return _getopt_(argc, argv, optstring, 0, 0);
+}
+int getopt_long(int argc, char *const argv[], const char *optstring,
+                const struct option *longopts, int *longindex) {
+  return _getopt_(argc, argv, optstring, longopts, longindex);
+}
+#endif
+
 #define PATH_SEP "/"
 
 #ifndef PREFIX
@@ -39,14 +369,6 @@
 #else
 #define NOBUILD_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)
 #endif
-
-#include <assert.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
 
 #define ANSI_COLOR_RED "\x1b[31m"
 #define ANSI_COLOR_GREEN "\x1b[32m"
@@ -571,19 +893,55 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path, int exit) {
+#ifndef _WIN32
   Fd result = fopen(path, "r+");
   if (result == NULL && exit) {
     PANIC("Could not open file %s: %d", path, errno);
   }
   return result;
+#else
+  SECURITY_ATTRIBUTES saAttr = {0};
+  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+  saAttr.bInheritHandle = TRUE;
+
+  Fd result = CreateFile(path, GENERIC_READ, 0, &saAttr, OPEN_EXISTING,
+                         FILE_ATTRIBUTE_READONLY, NULL);
+
+  if (result == INVALID_HANDLE_VALUE) {
+    PANIC("Could not open file %s", path);
+  }
+
+  return result;
+#endif
 }
 
 Fd fd_open_for_write(Cstr path) {
+#ifndef _WIN32
   Fd result = fopen(path, "w+");
   if (result == NULL) {
     PANIC("could not open file %s: %d", path, errno);
   }
   return result;
+#else
+  SECURITY_ATTRIBUTES saAttr = {0};
+  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+  saAttr.bInheritHandle = TRUE;
+
+  Fd result = CreateFile(path,                  // name of the write
+                         GENERIC_WRITE,         // open for writing
+                         0,                     // do not share
+                         &saAttr,               // default security
+                         CREATE_NEW,            // create new file only
+                         FILE_ATTRIBUTE_NORMAL, // normal file
+                         NULL                   // no attr. template
+  );
+
+  if (result == INVALID_HANDLE_VALUE) {
+    PANIC("Could not open file %s: %s", path, GetLastErrorAsString());
+  }
+
+  return result;
+#endif
 }
 
 void fd_close(Fd fd) { fclose(fd); }
@@ -1120,6 +1478,7 @@ void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd)); }
 void test_run_sync(Cmd cmd) { test_pid_wait(cmd_run_async(cmd)); }
 
 int path_is_dir(Cstr path) {
+#ifndef _WIN32
   struct stat statbuf = {0};
   if (stat(path, &statbuf) < 0) {
     if (errno == ENOENT) {
@@ -1132,6 +1491,12 @@ int path_is_dir(Cstr path) {
   }
 
   return S_ISDIR(statbuf.st_mode);
+#else
+  DWORD dwAttrib = GetFileAttributes(path);
+
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES &&
+          (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+#endif
 }
 
 void path_rename(const char *old_path, const char *new_path) {
@@ -1168,7 +1533,7 @@ void path_mkdirs(Cstr_Array path) {
     }
 
     result[len] = '\0';
-
+#ifndef _WIN32
     if (mkdir(result, 0755) < 0) {
       if (errno == EEXIST) {
         errno = 0;
@@ -1177,6 +1542,15 @@ void path_mkdirs(Cstr_Array path) {
       }
     }
   }
+#else
+    if (_mkdir(result) < 0) {
+      if (errno == EEXIST) {
+        errno = 0;
+      } else {
+        PANIC("could not create directory %s: %s", result, strerror(errno));
+      }
+    }
+#endif
 }
 
 void path_rm(Cstr path) {
