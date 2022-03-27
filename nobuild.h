@@ -19,6 +19,7 @@ typedef FILE *Fd;
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+typedef pid_t Pid;
 #else
 #include "windows.h"
 #include <direct.h>
