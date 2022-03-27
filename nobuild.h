@@ -178,7 +178,7 @@ static int postpone_noopt(int argc, char *const argv[], int index) {
 }
 static int _getopt_(int argc, char *const argv[], const char *optstring,
                     const struct option *longopts, int *longindex) {
-  puts("start getopt");
+  int len = 10;
   while (1) {
     int c;
     const char *optptr = 0;
@@ -188,13 +188,11 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
       break;
     }
     c = *(argv[optind] + nextchar);
-    puts("1");
     if (c == '\0') {
       nextchar = 0;
       ++optind;
       continue;
     }
-    puts("2");
     if (nextchar == 0) {
       if (optstring[0] != '+' && optstring[0] != '-') {
         while (c != '-') {
@@ -215,7 +213,6 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
         }
         break;
       } else {
-        puts("3");
         if (strcmp(argv[optind], "--") == 0) {
           optind++;
           break;
@@ -233,9 +230,7 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
           int index_search = 0;
           int index_found = -1;
           const struct option *optdef = 0;
-          puts("4");
-          while (longopts != 0) {
-            printf("longopts (%s)\n", longopts->name);
+          while (index_search < len) {
             if (strncmp(spec_long, longopts->name, spec_len) == 0) {
               if (optdef != 0) {
                 if (opterr) {
@@ -249,14 +244,12 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
             longopts++;
             index_search++;
           }
-          puts("4.5");
           if (optdef == 0) {
             if (opterr) {
               fprintf(stderr, "no such a option: %s\n", spec_long);
             }
             return '?';
           }
-          puts("5");
           switch (optdef->has_arg) {
           case no_argument:
             optarg = 0;
@@ -290,7 +283,6 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
         continue;
       }
     }
-    puts("6");
     optptr = strchr(optstring, c);
     if (optptr == NULL) {
       optopt = c;
@@ -321,10 +313,9 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
             fprintf(stderr, "%s: option requires an argument -- %c\n", argv[0],
                     c);
           }
-          puts("optstring");
-          if (optstring[0] == ':' ||
-              (optstring[0] == '-' || optstring[0] == '+') &&
-                  optstring[1] == ':') {
+          if ((optstring[0] == ':' ||
+               (optstring[0] == '-' || optstring[0] == '+')) &&
+              optstring[1] == ':') {
             c = ':';
           } else {
             c = '?';
@@ -334,19 +325,16 @@ static int _getopt_(int argc, char *const argv[], const char *optstring,
       ++optind;
       nextchar = 0;
     }
-    puts("7");
     return c;
   }
 
   /* end of option analysis */
-  puts("8");
 
   /* fix the order of non-opt params to original */
   while ((argc - optind - postpone_count) > 0) {
     postpone(argc, argv, optind);
     ++postpone_count;
   }
-  puts("9");
 
   nextchar = 0;
   postpone_count = 0;
@@ -358,7 +346,6 @@ int getopt(int argc, char *const argv[], const char *optstring) {
 }
 int getopt_long(int argc, char *const argv[], const char *optstring,
                 const struct option *longopts, int *longindex) {
-  puts("start");
   return _getopt_(argc, argv, optstring, longopts, longindex);
 }
 #endif
@@ -792,11 +779,6 @@ void update_results() {
 }
 
 void add_feature(Cstr_Array val) {
-#ifndef _WIN32
-  INFO("not win");
-#else
-  INFO("Win");
-#endif
   if (features == NULL) {
     features = malloc(sizeof(Cstr_Array));
     feature_count++;
@@ -982,7 +964,6 @@ void write_report(Cstr file) {
 }
 
 int handle_args(int argc, char **argv) {
-  INFO("error before handle");
   int opt_char = -1;
   int found = 0;
   int option_index;
@@ -993,12 +974,10 @@ int handle_args(int argc, char **argv) {
   int p = 0;
   char opt_b[256] = {0};
   strcpy(this_prefix, PREFIX);
-  INFO("error ");
 
   while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
-    INFO("getopt_long");
     switch ((int)opt_char) {
     case 'c': {
       c = 1;
