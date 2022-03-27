@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+typedef FILE *Fd;
 
 #ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
@@ -23,23 +24,23 @@
 #include <direct.h>
 #include <process.h>
 
+typedef HANDLE Pid;
 // win getopt and getopt_long taken from https://github.com/takamin/win-c
-// int getopt(int argc, char *const argv[], const char *optstring);
-//
-//#define no_argument 0
-//#define required_argument 1
-//#define optional_argument 2
-//
-// struct option {
-//  const char *name;
-//  int has_arg;
-//  int *flag;
-//  int val;
-//};
-//
-// int getopt_long(int argc, char *const argv[], const char *optstring,
-//                const struct option *longopts, int *longindex);
-/// windows specific garbage
+int getopt(int argc, char *const argv[], const char *optstring);
+
+#define no_argument 0
+#define required_argument 1
+#define optional_argument 2
+
+struct option {
+  const char *name;
+  int has_arg;
+  int *flag;
+  int val;
+};
+
+int getopt_long(int argc, char *const argv[], const char *optstring,
+                const struct option *longopts, int *longindex);
 struct dirent {
   char d_name[MAX_PATH + 1];
 };
@@ -155,197 +156,210 @@ int optopt = 0;
 int postpone_count = 0;
 int nextchar = 0;
 
-// static void postpone(int argc, char *const argv[], int index) {
-//   char **nc_argv = (char **)argv;
-//   char *p = nc_argv[index];
-//   int j = index;
-//   for (; j < argc - 1; j++) {
-//     nc_argv[j] = nc_argv[j + 1];
-//   }
-//   nc_argv[argc - 1] = p;
-// }
-// static int postpone_noopt(int argc, char *const argv[], int index) {
-//   int i = index;
-//   for (; i < argc; i++) {
-//     if (*(argv[i]) == '-') {
-//       postpone(argc, argv, index);
-//       return 1;
-//     }
-//   }
-//   return 0;
-// }
-// static int _getopt_(int argc, char *const argv[], const char *optstring,
-//                     const struct option *longopts, int *longindex) {
-//   while (1) {
-//     int c;
-//     const char *optptr = 0;
-//     if (optind >= argc - postpone_count) {
-//       c = 0;
-//       optarg = 0;
-//       break;
-//     }
-//     c = *(argv[optind] + nextchar);
-//     if (c == '\0') {
-//       nextchar = 0;
-//       ++optind;
-//       continue;
-//     }
-//     if (nextchar == 0) {
-//       if (optstring[0] != '+' && optstring[0] != '-') {
-//         while (c != '-') {
-//           /* postpone non-opt parameter */
-//           if (!postpone_noopt(argc, argv, optind)) {
-//             break; /* all args are non-opt param */
-//           }
-//           ++postpone_count;
-//           c = *argv[optind];
-//         }
-//       }
-//       if (c != '-') {
-//         if (optstring[0] == '-') {
-//           optarg = argv[optind];
-//           nextchar = 0;
-//           ++optind;
-//           return 1;
-//         }
-//         break;
-//       } else {
-//         if (strcmp(argv[optind], "--") == 0) {
-//           optind++;
-//           break;
-//         }
-//         ++nextchar;
-//         if (longopts != 0 && *(argv[optind] + 1) == '-') {
-//           char const *spec_long = argv[optind] + 2;
-//           char const *pos_eq = strchr(spec_long, '=');
-//           int spec_len = 0;
-//           if (pos_eq == NULL) {
-//             spec_len = strlen(spec_long);
-//           } else {
-//             spec_len = pos_eq - spec_long;
-//           }
-//           int index_search = 0;
-//           int index_found = -1;
-//           const struct option *optdef = 0;
-//           while (longopts->name != 0) {
-//             if (strncmp(spec_long, longopts->name, spec_len) == 0) {
-//               if (optdef != 0) {
-//                 if (opterr) {
-//                   fprintf(stderr, "ambiguous option: %s\n", spec_long);
-//                 }
-//                 return '?';
-//               }
-//               optdef = longopts;
-//               index_found = index_search;
-//             }
-//             longopts++;
-//             index_search++;
-//           }
-//           if (optdef == 0) {
-//             if (opterr) {
-//               fprintf(stderr, "no such a option: %s\n", spec_long);
-//             }
-//             return '?';
-//           }
-//           switch (optdef->has_arg) {
-//           case no_argument:
-//             optarg = 0;
-//             if (pos_eq != 0) {
-//               if (opterr) {
-//                 fprintf(stderr, "no argument for %s\n", optdef->name);
-//               }
-//               return '?';
-//             }
-//             break;
-//           case required_argument:
-//             if (pos_eq == NULL) {
-//               ++optind;
-//               optarg = argv[optind];
-//             } else {
-//               optarg = (char *)pos_eq + 1;
-//             }
-//             break;
-//           }
-//           ++optind;
-//           nextchar = 0;
-//           if (longindex != 0) {
-//             *longindex = index_found;
-//           }
-//           if (optdef->flag != 0) {
-//             *optdef->flag = optdef->val;
-//             return 0;
-//           }
-//           return optdef->val;
-//         }
-//         continue;
-//       }
-//     }
-//     optptr = strchr(optstring, c);
-//     if (optptr == NULL) {
-//       optopt = c;
-//       if (opterr) {
-//         fprintf(stderr, "%s: invalid option -- %c\n", argv[0], c);
-//       }
-//       ++nextchar;
-//       return '?';
-//     }
-//     if (*(optptr + 1) != ':') {
-//       nextchar++;
-//       if (*(argv[optind] + nextchar) == '\0') {
-//         ++optind;
-//         nextchar = 0;
-//       }
-//       optarg = 0;
-//     } else {
-//       nextchar++;
-//       if (*(argv[optind] + nextchar) != '\0') {
-//         optarg = argv[optind] + nextchar;
-//       } else {
-//         ++optind;
-//         if (optind < argc - postpone_count) {
-//           optarg = argv[optind];
-//         } else {
-//           optopt = c;
-//           if (opterr) {
-//             fprintf(stderr, "%s: option requires an argument -- %c\n",
-//             argv[0],
-//                     c);
-//           }
-//           if ((optstring[0] == ':' ||
-//                (optstring[0] == '-' || optstring[0] == '+')) &&
-//               optstring[1] == ':') {
-//             c = ':';
-//           } else {
-//             c = '?';
-//           }
-//         }
-//       }
-//       ++optind;
-//       nextchar = 0;
-//     }
-//     return c;
-//   }
-//
-//   /* end of option analysis */
-//
-//   /* fix the order of non-opt params to original */
-//   while ((argc - optind - postpone_count) > 0) {
-//     postpone(argc, argv, optind);
-//     ++postpone_count;
-//   }
-//
-//   nextchar = 0;
-//   postpone_count = 0;
-//   return -1;
-// }
-//
-// int getopt(int argc, char *const argv[], const char *optstring) {
-//   return _getopt_(argc, argv, optstring, 0, 0);
-// }
-// int getopt_long(int argc, char *const argv[], const char *optstring,
-//                 const struct option *longopts, int *longindex) {
-//   return _getopt_(argc, argv, optstring, longopts, longindex);
-// }
+static void postpone(int argc, char *const argv[], int index) {
+  char **nc_argv = (char **)argv;
+  char *p = nc_argv[index];
+  int j = index;
+  for (; j < argc - 1; j++) {
+    nc_argv[j] = nc_argv[j + 1];
+  }
+  nc_argv[argc - 1] = p;
+}
+static int postpone_noopt(int argc, char *const argv[], int index) {
+  int i = index;
+  for (; i < argc; i++) {
+    if (*(argv[i]) == '-') {
+      postpone(argc, argv, index);
+      return 1;
+    }
+  }
+  return 0;
+}
+static int _getopt_(int argc, char *const argv[], const char *optstring,
+                    const struct option *longopts, int *longindex) {
+  puts("start getopt");
+  while (1) {
+    int c;
+    const char *optptr = 0;
+    if (optind >= argc - postpone_count) {
+      c = 0;
+      optarg = 0;
+      break;
+    }
+    c = *(argv[optind] + nextchar);
+    puts("1");
+    if (c == '\0') {
+      nextchar = 0;
+      ++optind;
+      continue;
+    }
+    puts("2");
+    if (nextchar == 0) {
+      if (optstring[0] != '+' && optstring[0] != '-') {
+        while (c != '-') {
+          /* postpone non-opt parameter */
+          if (!postpone_noopt(argc, argv, optind)) {
+            break; /* all args are non-opt param */
+          }
+          ++postpone_count;
+          c = *argv[optind];
+        }
+      }
+      if (c != '-') {
+        if (optstring[0] == '-') {
+          optarg = argv[optind];
+          nextchar = 0;
+          ++optind;
+          return 1;
+        }
+        break;
+      } else {
+        puts("3");
+        if (strcmp(argv[optind], "--") == 0) {
+          optind++;
+          break;
+        }
+        ++nextchar;
+        if (longopts != 0 && *(argv[optind] + 1) == '-') {
+          char const *spec_long = argv[optind] + 2;
+          char const *pos_eq = strchr(spec_long, '=');
+          int spec_len = 0;
+          if (pos_eq == NULL) {
+            spec_len = strlen(spec_long);
+          } else {
+            spec_len = pos_eq - spec_long;
+          }
+          int index_search = 0;
+          int index_found = -1;
+          const struct option *optdef = 0;
+          puts("4");
+          while (longopts != 0) {
+            printf("longopts (%s)\n", longopts->name);
+            if (strncmp(spec_long, longopts->name, spec_len) == 0) {
+              if (optdef != 0) {
+                if (opterr) {
+                  fprintf(stderr, "ambiguous option: %s\n", spec_long);
+                }
+                return '?';
+              }
+              optdef = longopts;
+              index_found = index_search;
+            }
+            longopts++;
+            index_search++;
+          }
+          puts("4.5");
+          if (optdef == 0) {
+            if (opterr) {
+              fprintf(stderr, "no such a option: %s\n", spec_long);
+            }
+            return '?';
+          }
+          puts("5");
+          switch (optdef->has_arg) {
+          case no_argument:
+            optarg = 0;
+            if (pos_eq != 0) {
+              if (opterr) {
+                fprintf(stderr, "no argument for %s\n", optdef->name);
+              }
+              return '?';
+            }
+            break;
+          case required_argument:
+            if (pos_eq == NULL) {
+              ++optind;
+              optarg = argv[optind];
+            } else {
+              optarg = (char *)pos_eq + 1;
+            }
+            break;
+          }
+          ++optind;
+          nextchar = 0;
+          if (longindex != 0) {
+            *longindex = index_found;
+          }
+          if (optdef->flag != 0) {
+            *optdef->flag = optdef->val;
+            return 0;
+          }
+          return optdef->val;
+        }
+        continue;
+      }
+    }
+    puts("6");
+    optptr = strchr(optstring, c);
+    if (optptr == NULL) {
+      optopt = c;
+      if (opterr) {
+        fprintf(stderr, "%s: invalid option -- %c\n", argv[0], c);
+      }
+      ++nextchar;
+      return '?';
+    }
+    if (*(optptr + 1) != ':') {
+      nextchar++;
+      if (*(argv[optind] + nextchar) == '\0') {
+        ++optind;
+        nextchar = 0;
+      }
+      optarg = 0;
+    } else {
+      nextchar++;
+      if (*(argv[optind] + nextchar) != '\0') {
+        optarg = argv[optind] + nextchar;
+      } else {
+        ++optind;
+        if (optind < argc - postpone_count) {
+          optarg = argv[optind];
+        } else {
+          optopt = c;
+          if (opterr) {
+            fprintf(stderr, "%s: option requires an argument -- %c\n", argv[0],
+                    c);
+          }
+          puts("optstring");
+          if (optstring[0] == ':' ||
+              (optstring[0] == '-' || optstring[0] == '+') &&
+                  optstring[1] == ':') {
+            c = ':';
+          } else {
+            c = '?';
+          }
+        }
+      }
+      ++optind;
+      nextchar = 0;
+    }
+    puts("7");
+    return c;
+  }
+
+  /* end of option analysis */
+  puts("8");
+
+  /* fix the order of non-opt params to original */
+  while ((argc - optind - postpone_count) > 0) {
+    postpone(argc, argv, optind);
+    ++postpone_count;
+  }
+  puts("9");
+
+  nextchar = 0;
+  postpone_count = 0;
+  return -1;
+}
+
+int getopt(int argc, char *const argv[], const char *optstring) {
+  return _getopt_(argc, argv, optstring, 0, 0);
+}
+int getopt_long(int argc, char *const argv[], const char *optstring,
+                const struct option *longopts, int *longindex) {
+  puts("start");
+  return _getopt_(argc, argv, optstring, longopts, longindex);
+}
 #endif
 
 #define PATH_SEP "/"
@@ -387,8 +401,6 @@ int nextchar = 0;
 #define ANSI_COLOR_RESET "\x1b[0m"
 
 // typedefs
-typedef pid_t Pid;
-typedef FILE *Fd;
 typedef const char *Cstr;
 typedef struct {
   short failure_total;
@@ -417,7 +429,8 @@ static struct option flags[] = {{"build", required_argument, 0, 'b'},
                                 {"add", required_argument, 0, 'a'},
                                 {"debug", no_argument, 0, 'd'},
                                 {"pack", optional_argument, 0, 'p'},
-                                {"total-internal", optional_argument, 0, 't'}};
+                                {"total-internal", optional_argument, 0, 't'},
+                                {0}};
 
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
@@ -778,6 +791,11 @@ void update_results() {
 }
 
 void add_feature(Cstr_Array val) {
+#ifndef _WIN32
+  INFO("not win");
+#else
+  INFO("Win");
+#endif
   if (features == NULL) {
     features = malloc(sizeof(Cstr_Array));
     feature_count++;
@@ -902,26 +920,27 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path, int exit) {
-#ifndef _WIN32
+  //#ifndef _WIN32
   Fd result = fopen(path, "r+");
   if (result == NULL && exit) {
     PANIC("Could not open file %s: %d", path, errno);
   }
   return result;
-#else
-  SECURITY_ATTRIBUTES saAttr = {0};
-  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-  saAttr.bInheritHandle = TRUE;
-
-  Fd result = CreateFile(path, GENERIC_READ, 0, &saAttr, OPEN_EXISTING,
-                         FILE_ATTRIBUTE_READONLY, NULL);
-
-  if (result == INVALID_HANDLE_VALUE && exit) {
-    PANIC("Could not open file %s", path);
-  }
-
-  return result;
-#endif
+  //#else
+  //  INFO("Here");
+  //  SECURITY_ATTRIBUTES saAttr = {0};
+  //  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
+  //  saAttr.bInheritHandle = TRUE;
+  //
+  //  Fd result = CreateFile(path, GENERIC_READ, 0, &saAttr, OPEN_EXISTING,
+  //                         FILE_ATTRIBUTE_READONLY, NULL);
+  //
+  //  if (result == INVALID_HANDLE_VALUE && exit) {
+  //    PANIC("Could not open file %s", path);
+  //  }
+  //
+  //  return result;
+  //#endif
 }
 
 Fd fd_open_for_write(Cstr path) {
@@ -962,6 +981,7 @@ void write_report(Cstr file) {
 }
 
 int handle_args(int argc, char **argv) {
+  INFO("error before handle");
   int opt_char = -1;
   int found = 0;
   int option_index;
@@ -972,10 +992,12 @@ int handle_args(int argc, char **argv) {
   int p = 0;
   char opt_b[256] = {0};
   strcpy(this_prefix, PREFIX);
+  INFO("error ");
 
   while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drp::", flags,
                                  &option_index)) != -1) {
     found = 1;
+    INFO("getopt_long");
     switch ((int)opt_char) {
     case 'c': {
       c = 1;
@@ -1152,6 +1174,26 @@ Cstr parse_feature_from_path(Cstr val) {
 }
 
 void test_pid_wait(Pid pid) {
+#ifdef _WIN32
+  DWORD result = WaitForSingleObject(pid,     // HANDLE hHandle,
+                                     INFINITE // DWORD  dwMilliseconds
+  );
+
+  if (result == WAIT_FAILED) {
+    PANIC("could not wait on child process: %s", GetLastErrorAsString());
+  }
+
+  DWORD exit_status;
+  if (GetExitCodeProcess(pid, &exit_status) == 0) {
+    PANIC("could not get process exit code: %lu", GetLastError());
+  }
+
+  if (exit_status != 0) {
+    PANIC("command exited with exit code %lu", exit_status);
+  }
+
+  CloseHandle(pid);
+#else
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
@@ -1168,6 +1210,7 @@ void test_pid_wait(Pid pid) {
       PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
+#endif
 }
 
 void package(Cstr prefix) {
@@ -1382,6 +1425,7 @@ void handle_vend(Cstr nobuild_flag) {
   for (size_t i = 0; i < vend_count; i++) {
     Fd fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     if (fp == NULL) {
+      INFO("fp == null");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
@@ -1392,12 +1436,15 @@ void handle_vend(Cstr nobuild_flag) {
       fprintf(fd, "%s", vends[i].elems[2]);
       fclose(fd);
     }
+    INFO("Opening again");
     fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     char sha[256];
 
     if (fscanf((FILE *)fp, "%s", sha) == 0) {
       PANIC("Couldn't extract sha from build cache");
     }
+    INFO("str comp");
+
     if (strcmp(vends[i].elems[2], sha) != 0) {
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
@@ -1448,6 +1495,26 @@ void build(Cstr_Array comp_flags) {
 }
 
 void pid_wait(Pid pid) {
+#ifdef _WIN32
+  DWORD result = WaitForSingleObject(pid,     // HANDLE hHandle,
+                                     INFINITE // DWORD  dwMilliseconds
+  );
+
+  if (result == WAIT_FAILED) {
+    PANIC("could not wait on child process: %s", GetLastErrorAsString());
+  }
+
+  DWORD exit_status;
+  if (GetExitCodeProcess(pid, &exit_status) == 0) {
+    PANIC("could not get process exit code: %lu", GetLastError());
+  }
+
+  if (exit_status != 0) {
+    PANIC("command exited with exit code %lu", exit_status);
+  }
+
+  CloseHandle(pid);
+#else
   for (;;) {
     int wstatus = 0;
     if (waitpid(pid, &wstatus, 0) < 0) {
@@ -1464,11 +1531,44 @@ void pid_wait(Pid pid) {
       PANIC("command process was terminated by %d", WTERMSIG(wstatus));
     }
   }
+#endif
 }
 
 Cstr cmd_show(Cmd cmd) { return cstr_array_join(" ", cmd.line); }
 
 Pid cmd_run_async(Cmd cmd) {
+#ifdef _WIN32
+  // https://docs.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output
+
+  STARTUPINFO siStartInfo;
+  ZeroMemory(&siStartInfo, sizeof(siStartInfo));
+  siStartInfo.cb = sizeof(STARTUPINFO);
+  // NOTE: theoretically setting NULL to std handles should not be a problem
+  // https://docs.microsoft.com/en-us/windows/console/getstdhandle?redirectedfrom=MSDN#attachdetach-behavior
+  siStartInfo.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+  // TODO(#32): check for errors in GetStdHandle
+  siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
+
+  PROCESS_INFORMATION piProcInfo;
+  ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
+
+  BOOL bSuccess = CreateProcess(
+      NULL,
+      // TODO(#33): cmd_run_async on Windows does not render command line
+      // properly It may require wrapping some arguments with double-quotes if
+      // they contains spaces, etc.
+      (char *)cstr_array_join(" ", cmd.line), NULL, NULL, TRUE, 0, NULL, NULL,
+      &siStartInfo, &piProcInfo);
+
+  if (!bSuccess) {
+    PANIC("Could not create child process %s: %s\n", cmd_show(cmd),
+          GetLastErrorAsString());
+  }
+
+  CloseHandle(piProcInfo.hThread);
+
+  return piProcInfo.hProcess;
+#else
   pid_t cpid = fork();
   if (cpid < 0) {
     PANIC("Could not fork child process: %s: %s", cmd_show(cmd),
@@ -1481,6 +1581,7 @@ Pid cmd_run_async(Cmd cmd) {
     }
   }
   return cpid;
+#endif
 }
 
 void cmd_run_sync(Cmd cmd) { pid_wait(cmd_run_async(cmd)); }
@@ -1550,7 +1651,6 @@ void path_mkdirs(Cstr_Array path) {
         PANIC("could not create directory %s: %s", result, strerror(errno));
       }
     }
-  }
 #else
     if (_mkdir(result) < 0) {
       if (errno == EEXIST) {
@@ -1560,6 +1660,7 @@ void path_mkdirs(Cstr_Array path) {
       }
     }
 #endif
+  }
 }
 
 void path_rm(Cstr path) {
