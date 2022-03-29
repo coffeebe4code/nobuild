@@ -1,5 +1,6 @@
 #pragma once
 int add_2(const int val);
+int do_something();
 
 typedef struct {
   int i;
