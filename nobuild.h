@@ -903,56 +903,19 @@ Cstr cstr_array_join(Cstr sep, Cstr_Array cstrs) {
 }
 
 Fd fd_open_for_read(Cstr path, int exit) {
-  //#ifndef _WIN32
   Fd result = fopen(path, "r+");
   if (result == NULL && exit) {
     PANIC("Could not open file %s: %d", path, errno);
   }
   return result;
-  //#else
-  //  INFO("Here");
-  //  SECURITY_ATTRIBUTES saAttr = {0};
-  //  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-  //  saAttr.bInheritHandle = TRUE;
-  //
-  //  Fd result = CreateFile(path, GENERIC_READ, 0, &saAttr, OPEN_EXISTING,
-  //                         FILE_ATTRIBUTE_READONLY, NULL);
-  //
-  //  if (result == INVALID_HANDLE_VALUE && exit) {
-  //    PANIC("Could not open file %s", path);
-  //  }
-  //
-  //  return result;
-  //#endif
 }
 
 Fd fd_open_for_write(Cstr path) {
-#ifndef _WIN32
   Fd result = fopen(path, "w+");
   if (result == NULL) {
     PANIC("could not open file %s: %d", path, errno);
   }
   return result;
-#else
-  SECURITY_ATTRIBUTES saAttr = {0};
-  saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
-  saAttr.bInheritHandle = TRUE;
-
-  Fd result = CreateFile(path,                  // name of the write
-                         GENERIC_WRITE,         // open for writing
-                         0,                     // do not share
-                         &saAttr,               // default security
-                         CREATE_NEW,            // create new file only
-                         FILE_ATTRIBUTE_NORMAL, // normal file
-                         NULL                   // no attr. template
-  );
-
-  if (result == INVALID_HANDLE_VALUE) {
-    PANIC("Could not open file %s: %s", path, GetLastErrorAsString());
-  }
-
-  return result;
-#endif
 }
 
 void fd_close(Fd fd) { fclose(fd); }
@@ -1405,7 +1368,6 @@ void handle_vend(Cstr nobuild_flag) {
   for (size_t i = 0; i < vend_count; i++) {
     Fd fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     if (fp == NULL) {
-      INFO("fp == null");
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
