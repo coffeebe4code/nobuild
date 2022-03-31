@@ -6,8 +6,8 @@
 
 void test_add_4() { ASSERT(add_4(3) == 7); }
 
-DECLARE_MOCK(int, add_2);
-DECLARE_MOCK(int, do_something);
+DECLARE_MOCK_VOID(int, add_2);
+DECLARE_MOCK_VOID(int, do_something);
 DECLARE_MOCK_T({ int i; }, example_t);
 DECLARE_MOCK_T(
     {
@@ -15,7 +15,7 @@ DECLARE_MOCK_T(
       int otherthing;
     },
     my_type_t);
-DECLARE_MOCK(example_t, add_2_t);
+DECLARE_MOCK(example_t, add_2_t, const int val);
 
 int main() {
   DESCRIBE("things");
