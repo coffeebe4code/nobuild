@@ -2,6 +2,7 @@ callgrind.*
 
 # nobuild
 nobuild
+nobuild.exe
 target
 deps
 obj
