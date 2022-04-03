@@ -24,7 +24,7 @@ int main() {
   MOCK(do_something, 7);
   MOCK(do_something, 7);
   MOCK(add_2_t, (example_t){.i = 5});
-  MOCK_T(my_type_t, {.thing = 1 Comma.otherthing = 2}, test_t);
+  MOCK_T(my_type_t, {.thing = 1 COMMA.otherthing = 2}, test_t);
   SHOULDB("mock t correctly", {
     ASSERT(test_t.thing == 1);
     ASSERT(test_t.otherthing == 2);
