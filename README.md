@@ -85,7 +85,7 @@ You will notice in this repository, the `stuff` feature has multiple files. This
 
 define the `NOBUILD_IMPLEMENTATION` and `WITH_MOCKING` preprocessor command at the top of the file, to include the stb style header.
 
-It is recommended to use mocking for everything that is defined outside of the feature, this prevents needing to link every file at test execution for your dependencies, saving test time.
+It is recommended to use mocking for everything that is defined outside of the feature, this prevents needing to link every file at test execution for your dependencies, saving test time. Right now, only `WITH_MOCKING` is supported.
 
 ```c
 #define NOBUILD_IMPLEMENTATION
@@ -98,12 +98,13 @@ Example tests.
 `tests/finance.c`
 ```c
 #include "../include/finance.h"
-DECLARE_MOCK(double, pow);
-DECLARE_MOCK(double, mul);
-DECLARE_MOCK(double, add);
+DECLARE_MOCK(double, pow, int base COMMA_D int power); //COMMA_D is a macro which expands to __attribute__((unused)), // (,) Comma included. Allowing variable length args.
+DECLARE_MOCK(double, mul, int left COMMA_D int right); //This is an oddity with macros and just dealing with C, in order to get mocking right.
+DECLARE_MOCK(double, add, int left COMMA_D int right);
+// DECLARE_MOCK_VOID(int, ret_2) use _VOID if function takes no arguments.
 
 int main() {
-  DESCRIBE("finance");
+  DESCRIBE("finance"); // right now, DESCRIBE("feature") must be the exact name of the feature, to properly bootstrap the tests.
   SHOULDB("calculate compound interest", {
     future_value_t val = new_compound_interest();
     val.r = .03;
@@ -112,7 +113,7 @@ int main() {
     val.p = 10000; 
     ASSERT(calculate(val) == 11616.17);
   });
-  RETURN();
+  RETURN(); // special return which documents and handles the errors and passes.
 }
 ```
 In this example, we are testing the `finance` feature. It uses our calculations from the `math` feature. Notice how we do not bring the math include into scope in our test file
@@ -148,3 +149,7 @@ Although this is a contrived example, and we are mocking very simple things. It 
 # Tutorial
 
 visit the demo [turorial](./demo/tutorial.md)
+
+# Windows Setup
+
+visit windows [windows](./demo/windows.md)
