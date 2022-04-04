@@ -699,15 +699,23 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 #ifdef WITH_MOCKING
 #ifndef NO_MOCKING
-#define Comma ,
-#define DECLARE_MOCK(type, name)                                               \
+#define COMMA_D __attribute__((unused)),
+#define COMMA ,
+#define DECLARE_MOCK(type, name, arguments)                                    \
   type __var_##name[255];                                                      \
   size_t __var_##name##_inc = 0;                                               \
   size_t __var_##name##_actual = 0;                                            \
-  type name() { return __var_##name[__var_##name##_inc++]; }
+  type name(arguments __attribute__((unused))) {                               \
+    return (type)__var_##name[__var_##name##_inc++];                           \
+  }
+#define DECLARE_MOCK_VOID(type, name)                                          \
+  type __var_##name[255];                                                      \
+  size_t __var_##name##_inc = 0;                                               \
+  size_t __var_##name##_actual = 0;                                            \
+  type name() { return (type)__var_##name[__var_##name##_inc++]; }
 #define DECLARE_MOCK_T(def, type) typedef struct def type;
 #define MOCK(name, value) __var_##name[__var_##name##_actual++] = value;
-#define MOCK_T(type, value, name) type name = value;
+#define MOCK_T(type, value, name) type name = (type)value;
 #else
 #define DECLARE_MOCK(type, name)
 #define DECLARE_MOCK_T(def, type)
