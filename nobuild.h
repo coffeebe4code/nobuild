@@ -1140,7 +1140,7 @@ void test_pid_wait(Pid pid) {
   }
 
   if (exit_status != 0) {
-    PANIC("command exited with exit code %lu", exit_status);
+    results.failure_total += exit_status;
   }
 
   CloseHandle(pid);
@@ -1386,14 +1386,12 @@ void handle_vend(Cstr nobuild_flag) {
       fprintf(fd, "%s", vends[i].elems[2]);
       fclose(fd);
     }
-    INFO("Opening again");
     fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     char sha[256];
 
     if (fscanf((FILE *)fp, "%s", sha) == 0) {
       PANIC("Couldn't extract sha from build cache");
     }
-    INFO("str comp");
 
     if (strcmp(vends[i].elems[2], sha) != 0) {
       DIR *dir = opendir(CONCAT("vend/", vends[i].elems[0]));
