@@ -148,7 +148,7 @@ Although this is a contrived example, and we are mocking very simple things. It 
 
 # Tutorial
 
-visit the demo [turorial](./demo/tutorial.md)
+visit the demo [tutorial](./demo/tutorial.md)
 
 # Windows Setup
 
