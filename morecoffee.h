@@ -219,7 +219,7 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#ifdef NOBUILD_IMPLEMENTATION
+#ifdef MORE_COFFEE
 
 Cstr cstr_no_ext(Cstr path) {
   size_t n = strlen(path);
@@ -412,4 +412,4 @@ void PANIC(Cstr fmt, ...) {
   exit(1);
 }
 
-#endif // NOBUILD_IMPLEMENTATION
+#endif // MORE_COFFEE

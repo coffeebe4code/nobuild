@@ -1,9 +1,9 @@
-#define NOBUILD_IMPLEMENTATION
+#define MORE_COFFEE
 #define WITH_MOCKING
-#include "../test.h"
+#include "../morecoffee.h"
 
 int main() {
-  DESCRIBE("util2");
+  DESCRIBE("utils");
   SHOULDB("work", { ASSERT(1 == 1); });
   RETURN();
 }
