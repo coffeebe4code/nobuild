@@ -3,358 +3,32 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
 typedef FILE *Fd;
 
 #ifndef _WIN32
-#define _POSIX_C_SOURCE 200809L
 #include <dirent.h>
 #include <fcntl.h>
 #include <getopt.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 typedef pid_t Pid;
+double main_utime = 0;
+long int main_sutime = 0;
+double cmd_utime = 0;
+long int cmd_sutime = 0;
 #else
-#include "windows.h"
-#include <direct.h>
-#include <process.h>
 
-typedef HANDLE Pid;
-// win getopt and getopt_long taken from https://github.com/takamin/win-c
-int getopt(int argc, char *const argv[], const char *optstring);
-
-#define no_argument 0
-#define required_argument 1
-#define optional_argument 2
-
-struct option {
-  const char *name;
-  int has_arg;
-  int *flag;
-  int val;
-};
-
-int getopt_long(int argc, char *const argv[], const char *optstring,
-                const struct option *longopts, int *longindex);
-struct dirent {
-  char d_name[MAX_PATH + 1];
-};
-
-typedef struct DIR DIR;
-
-DIR *opendir(const char *dirpath);
-struct dirent *readdir(DIR *dirp);
-int closedir(DIR *dirp);
-
-LPSTR GetLastErrorAsString(void);
-
-LPSTR GetLastErrorAsString(void) {
-  // https://stackoverflow.com/questions/1387064/how-to-get-the-error-message-from-the-error-code-returned-by-getlasterror
-
-  DWORD errorMessageId = GetLastError();
-  assert(errorMessageId != 0);
-
-  LPSTR messageBuffer = NULL;
-
-  DWORD size = FormatMessage(
-
-      FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-          FORMAT_MESSAGE_IGNORE_INSERTS,         // DWORD   dwFlags,
-      NULL,                                      // LPCVOID lpSource,
-      errorMessageId,                            // DWORD   dwMessageId,
-      MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), // DWORD   dwLanguageId,
-      (LPSTR)&messageBuffer,                     // LPTSTR  lpBuffer,
-      0,                                         // DWORD   nSize,
-      NULL                                       // va_list *Arguments
-  );
-
-  if (size != (DWORD)-1) {
-    return messageBuffer;
-  } else {
-    return "Invalid error message in win api";
-  }
-}
-
-struct DIR {
-  HANDLE hFind;
-  WIN32_FIND_DATA data;
-  struct dirent *dirent;
-};
-
-DIR *opendir(const char *dirpath) {
-  assert(dirpath);
-
-  char buffer[MAX_PATH];
-  snprintf(buffer, MAX_PATH, "%s\\*", dirpath);
-
-  DIR *dir = (DIR *)calloc(1, sizeof(DIR));
-
-  dir->hFind = FindFirstFile(buffer, &dir->data);
-  if (dir->hFind == INVALID_HANDLE_VALUE) {
-    errno = ENOSYS;
-    goto fail;
-  }
-
-  return dir;
-
-fail:
-  if (dir) {
-    free(dir);
-  }
-
-  return NULL;
-}
-
-struct dirent *readdir(DIR *dirp) {
-  assert(dirp);
-
-  if (dirp->dirent == NULL) {
-    dirp->dirent = (struct dirent *)calloc(1, sizeof(struct dirent));
-  } else {
-    if (!FindNextFile(dirp->hFind, &dirp->data)) {
-      if (GetLastError() != ERROR_NO_MORE_FILES) {
-        errno = ENOSYS;
-      }
-
-      return NULL;
-    }
-  }
-
-  memset(dirp->dirent->d_name, 0, sizeof(dirp->dirent->d_name));
-
-  strncpy(dirp->dirent->d_name, dirp->data.cFileName,
-          sizeof(dirp->dirent->d_name) - 1);
-
-  return dirp->dirent;
-}
-
-int closedir(DIR *dirp) {
-  assert(dirp);
-
-  if (!FindClose(dirp->hFind)) {
-    errno = ENOSYS;
-    return -1;
-  }
-
-  if (dirp->dirent) {
-    free(dirp->dirent);
-  }
-  free(dirp);
-
-  return 0;
-}
-char *optarg = 0;
-int optind = 1;
-int opterr = 1;
-int optopt = 0;
-
-int postpone_count = 0;
-int nextchar = 0;
-
-static void postpone(int argc, char *const argv[], int index) {
-  char **nc_argv = (char **)argv;
-  char *p = nc_argv[index];
-  int j = index;
-  for (; j < argc - 1; j++) {
-    nc_argv[j] = nc_argv[j + 1];
-  }
-  nc_argv[argc - 1] = p;
-}
-static int postpone_noopt(int argc, char *const argv[], int index) {
-  int i = index;
-  for (; i < argc; i++) {
-    if (*(argv[i]) == '-') {
-      postpone(argc, argv, index);
-      return 1;
-    }
-  }
-  return 0;
-}
-static int _getopt_(int argc, char *const argv[], const char *optstring,
-                    const struct option *longopts, int *longindex) {
-  int len = 10;
-  while (1) {
-    int c;
-    const char *optptr = 0;
-    if (optind >= argc - postpone_count) {
-      c = 0;
-      optarg = 0;
-      break;
-    }
-    c = *(argv[optind] + nextchar);
-    if (c == '\0') {
-      nextchar = 0;
-      ++optind;
-      continue;
-    }
-    if (nextchar == 0) {
-      if (optstring[0] != '+' && optstring[0] != '-') {
-        while (c != '-') {
-          /* postpone non-opt parameter */
-          if (!postpone_noopt(argc, argv, optind)) {
-            break; /* all args are non-opt param */
-          }
-          ++postpone_count;
-          c = *argv[optind];
-        }
-      }
-      if (c != '-') {
-        if (optstring[0] == '-') {
-          optarg = argv[optind];
-          nextchar = 0;
-          ++optind;
-          return 1;
-        }
-        break;
-      } else {
-        if (strcmp(argv[optind], "--") == 0) {
-          optind++;
-          break;
-        }
-        ++nextchar;
-        if (longopts != 0 && *(argv[optind] + 1) == '-') {
-          char const *spec_long = argv[optind] + 2;
-          char const *pos_eq = strchr(spec_long, '=');
-          int spec_len = 0;
-          if (pos_eq == NULL) {
-            spec_len = strlen(spec_long);
-          } else {
-            spec_len = pos_eq - spec_long;
-          }
-          int index_search = 0;
-          int index_found = -1;
-          const struct option *optdef = 0;
-          while (index_search < len) {
-            if (strncmp(spec_long, longopts->name, spec_len) == 0) {
-              if (optdef != 0) {
-                if (opterr) {
-                  fprintf(stderr, "ambiguous option: %s\n", spec_long);
-                }
-                return '?';
-              }
-              optdef = longopts;
-              index_found = index_search;
-            }
-            longopts++;
-            index_search++;
-          }
-          if (optdef == 0) {
-            if (opterr) {
-              fprintf(stderr, "no such a option: %s\n", spec_long);
-            }
-            return '?';
-          }
-          switch (optdef->has_arg) {
-          case no_argument:
-            optarg = 0;
-            if (pos_eq != 0) {
-              if (opterr) {
-                fprintf(stderr, "no argument for %s\n", optdef->name);
-              }
-              return '?';
-            }
-            break;
-          case required_argument:
-            if (pos_eq == NULL) {
-              ++optind;
-              optarg = argv[optind];
-            } else {
-              optarg = (char *)pos_eq + 1;
-            }
-            break;
-          }
-          ++optind;
-          nextchar = 0;
-          if (longindex != 0) {
-            *longindex = index_found;
-          }
-          if (optdef->flag != 0) {
-            *optdef->flag = optdef->val;
-            return 0;
-          }
-          return optdef->val;
-        }
-        continue;
-      }
-    }
-    optptr = strchr(optstring, c);
-    if (optptr == NULL) {
-      optopt = c;
-      if (opterr) {
-        fprintf(stderr, "%s: invalid option -- %c\n", argv[0], c);
-      }
-      ++nextchar;
-      return '?';
-    }
-    if (*(optptr + 1) != ':') {
-      nextchar++;
-      if (*(argv[optind] + nextchar) == '\0') {
-        ++optind;
-        nextchar = 0;
-      }
-      optarg = 0;
-    } else {
-      nextchar++;
-      if (*(argv[optind] + nextchar) != '\0') {
-        optarg = argv[optind] + nextchar;
-      } else {
-        ++optind;
-        if (optind < argc - postpone_count) {
-          optarg = argv[optind];
-        } else {
-          optopt = c;
-          if (opterr) {
-            fprintf(stderr, "%s: option requires an argument -- %c\n", argv[0],
-                    c);
-          }
-          if ((optstring[0] == ':' ||
-               (optstring[0] == '-' || optstring[0] == '+')) &&
-              optstring[1] == ':') {
-            c = ':';
-          } else {
-            c = '?';
-          }
-        }
-      }
-      ++optind;
-      nextchar = 0;
-    }
-    return c;
-  }
-
-  /* end of option analysis */
-
-  /* fix the order of non-opt params to original */
-  while ((argc - optind - postpone_count) > 0) {
-    postpone(argc, argv, optind);
-    ++postpone_count;
-  }
-
-  nextchar = 0;
-  postpone_count = 0;
-  return -1;
-}
-
-int getopt(int argc, char *const argv[], const char *optstring) {
-  return _getopt_(argc, argv, optstring, 0, 0);
-}
-int getopt_long(int argc, char *const argv[], const char *optstring,
-                const struct option *longopts, int *longindex) {
-  return _getopt_(argc, argv, optstring, longopts, longindex);
-}
-#endif
-
-#define PATH_SEP "/"
-
-#ifndef PREFIX
-#define PREFIX "/usr/local"
-#endif
 #ifndef CFLAGS
 #define CFLAGS "-Wall", "-Werror", "-std=c11"
 #endif
@@ -388,24 +62,6 @@ int getopt_long(int argc, char *const argv[], const char *optstring,
 #define ANSI_COLOR_CYAN "\x1b[36m"
 #define ANSI_COLOR_RESET "\x1b[0m"
 
-// typedefs
-typedef const char *Cstr;
-typedef struct {
-  short failure_total;
-  short passed_total;
-} result_t;
-typedef struct {
-  Cstr *elems;
-  size_t count;
-} Cstr_Array;
-typedef struct {
-  Cstr_Array line;
-} Cmd;
-typedef struct {
-  Cmd *elems;
-  size_t count;
-} Cmd_Array;
-
 // statics
 static int test_result_status __attribute__((unused)) = 0;
 static struct option flags[] = {{"build", required_argument, 0, 'b'},
@@ -414,12 +70,14 @@ static struct option flags[] = {{"build", required_argument, 0, 'b'},
                                 {"exe", required_argument, 0, 'e'},
                                 {"fetch", required_argument, 0, 'f'},
                                 {"release", no_argument, 0, 'r'},
+                                {"skip-tests", no_argument, 0, 's'},
                                 {"add", required_argument, 0, 'a'},
                                 {"debug", no_argument, 0, 'd'},
                                 {"pack", optional_argument, 0, 'p'},
                                 {"total-internal", optional_argument, 0, 't'},
                                 {0}};
 
+static int skip_tests = 0;
 static result_t results = {0, 0};
 static Cstr_Array *features = NULL;
 static Cstr_Array libs = {.elems = 0, .count = 0};
@@ -430,7 +88,6 @@ static size_t feature_count = 0;
 static size_t deps_count = 0;
 static size_t exe_count = 0;
 static size_t vend_count = 0;
-static clock_t start = 0;
 static char this_prefix[256] = {0};
 
 // forwards
@@ -455,6 +112,7 @@ void debug();
 void build(Cstr_Array comp_flags);
 void package(Cstr prefix);
 void obj_build(Cstr feature, Cstr_Array comp_flags);
+void obj_build_threaded(Cstr_Array comp_flags);
 void vend_build(Cstr vend, Cstr_Array comp_flags);
 void test_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array feature_links);
 void exe_build(Cstr feature, Cstr_Array comp_flags, Cstr_Array deps);
@@ -493,14 +151,6 @@ void RUNLOG(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 // macros
-#define FOREACH_ARRAY(type, elem, array, body)                                 \
-  for (size_t elem_##index = 0; elem_##index < array.count; ++elem_##index) {  \
-    type *elem = &array.elems[elem_##index];                                   \
-    body;                                                                      \
-  }
-
-#define CSTRS()                                                                \
-  { .elems = NULL, .count = 0 }
 
 #define ENDS_WITH(cstr, postfix) cstr_ends_with(cstr, postfix)
 #define NOEXT(path) cstr_no_ext(path)
@@ -579,7 +229,6 @@ void OKAY(Cstr fmt, ...) NOBUILD_PRINTF_FORMAT(1, 2);
 
 #define BOOTSTRAP(argc, argv)                                                  \
   do {                                                                         \
-    start = clock();                                                           \
     handle_args(argc, argv);                                                   \
   } while (0)
 
@@ -946,10 +595,14 @@ int handle_args(int argc, char **argv) {
   char opt_b[256] = {0};
   strcpy(this_prefix, PREFIX);
 
-  while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drp::", flags,
+  while ((opt_char = getopt_long(argc, argv, "t:ce:ia:f:b:drsp::", flags,
                                  &option_index)) != -1) {
     found = 1;
     switch ((int)opt_char) {
+    case 's': {
+      skip_tests = 1;
+      break;
+    }
     case 'c': {
       c = 1;
       break;
@@ -983,7 +636,7 @@ int handle_args(int argc, char **argv) {
       for (size_t i = 0; i < vend_count; i++) {
         if (strcmp(vends[i].elems[0], optarg) == 0) {
           pull(vends[i].elems[0], vends[i].elems[2]);
-          build_vend(vends[i].elems[0], "-d");
+          // build_vend(vends[i].elems[0], "-d");
           Fd fd =
               fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
           fprintf(fd, "%s", vends[i].elems[2]);
@@ -1007,7 +660,7 @@ int handle_args(int argc, char **argv) {
       break;
     }
     case 't': {
-      handle_vend("-d");
+      // handle_vend("-d");
       break;
     }
     default: {
@@ -1020,7 +673,7 @@ int handle_args(int argc, char **argv) {
     create_folders();
   }
   if (b) {
-    handle_vend("-d");
+    // handle_vend("-d");
     Cstr parsed = parse_feature_from_path(opt_b);
     Cstr_Array all = CSTRS();
     all = incremental_build(parsed, all);
@@ -1037,7 +690,9 @@ int handle_args(int argc, char **argv) {
 
       obj_build(all.elems[i], local_comp);
       test_build(all.elems[i], local_comp, links);
-      EXEC_TESTS(all.elems[i]);
+      if (!skip_tests) {
+        EXEC_TESTS(all.elems[i]);
+      }
       links.elems = NULL;
       links.count = 0;
     }
@@ -1051,17 +706,16 @@ int handle_args(int argc, char **argv) {
       exe_deps.count = 0;
     }
 
-    INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
     RESULTS();
   }
   if (r) {
     create_folders();
-    handle_vend("-r");
+    // handle_vend("-r");
     release();
   }
   if (d) {
     create_folders();
-    handle_vend("-d");
+    // handle_vend("-d");
     debug();
   }
   if (p) {
@@ -1179,6 +833,32 @@ void package(Cstr prefix) {
         CONCAT(prefix, "include/"));
   }
   INFO("Installed Successfully");
+}
+
+void *obj_build_ptr(void *input) {
+  thread_data_t *ptr = (thread_data_t *)input;
+  obj_build(*ptr->feature, *ptr->array);
+  return NULL;
+}
+
+void obj_build_threaded(Cstr_Array comp_flags) {
+  pthread_t *tid = malloc(sizeof(pthread_t) * feature_count);
+  Cstr_Array links = CSTRS();
+  for (size_t i = 0; i < feature_count; i++) {
+    for (size_t k = 1; k < features[i].count; k++) {
+      links = cstr_array_append(links, features[i].elems[k]);
+    }
+    thread_data_t *data = malloc(sizeof(thread_data_t));
+    data->feature = &features[i].elems[0];
+    data->array = &comp_flags;
+    pthread_create(&tid[i], NULL, obj_build_ptr, (void *)data);
+    // obj_build(features[i].elems[0], comp_flags);
+    links.elems = NULL;
+    links.count = 0;
+  }
+  for (size_t i = 0; i < feature_count; i++) {
+    pthread_join(tid[i], NULL);
+  }
 }
 
 void obj_build(Cstr feature, Cstr_Array comp_flags) {
@@ -1328,7 +1008,7 @@ void exe_build(Cstr exe, Cstr_Array comp_flags, Cstr_Array exe_deps) {
 }
 
 void release() {
-  handle_vend("-r");
+  // handle_vend("-r");
   build(cstr_array_make(RCOMP, NULL));
 }
 
@@ -1345,7 +1025,7 @@ Cstr_Array incremental_build(Cstr parsed, Cstr_Array processed) {
 }
 
 void debug() {
-  handle_vend("-d");
+  // handle_vend("-d");
   build(cstr_array_make(DCOMP, NULL));
 }
 
@@ -1372,7 +1052,7 @@ void build_vend(Cstr name, Cstr nobuild_flag) {
   }
 }
 
-void handle_vend(Cstr nobuild_flag) {
+void handle_vend(Cstr nobuild_flag __attribute__((unused))) {
   for (size_t i = 0; i < vend_count; i++) {
     Fd fp = fd_open_for_read(CONCAT("target/nobuild/", vends[i].elems[0]), 0);
     if (fp == NULL) {
@@ -1380,8 +1060,8 @@ void handle_vend(Cstr nobuild_flag) {
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
       }
-      pull(vends[i].elems[0], vends[i].elems[2]);
-      build_vend(vends[i].elems[0], nobuild_flag);
+      // pull(vends[i].elems[0], vends[i].elems[2]);
+      // build_vend(vends[i].elems[0], nobuild_flag);
       Fd fd = fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
       fprintf(fd, "%s", vends[i].elems[2]);
       fclose(fd);
@@ -1398,8 +1078,8 @@ void handle_vend(Cstr nobuild_flag) {
       if (dir == NULL) {
         clone(vends[i].elems[0], vends[i].elems[1]);
       }
-      pull(vends[i].elems[0], vends[i].elems[2]);
-      build_vend(vends[i].elems[0], nobuild_flag);
+      // pull(vends[i].elems[0], vends[i].elems[2]);
+      // build_vend(vends[i].elems[0], nobuild_flag);
       Fd fd = fd_open_for_write(CONCAT("target/nobuild/", vends[i].elems[0]));
       fprintf(fd, "%s", vends[i].elems[2]);
       fclose(fd);
@@ -1419,13 +1099,15 @@ void clone(Cstr name, Cstr repo) {
 
 void build(Cstr_Array comp_flags) {
   Cstr_Array links = CSTRS();
+  obj_build_threaded(comp_flags);
   for (size_t i = 0; i < feature_count; i++) {
     for (size_t k = 1; k < features[i].count; k++) {
       links = cstr_array_append(links, features[i].elems[k]);
     }
-    obj_build(features[i].elems[0], comp_flags);
     test_build(features[i].elems[0], comp_flags, links);
-    EXEC_TESTS(features[i].elems[0]);
+    if (!skip_tests) {
+      EXEC_TESTS(features[i].elems[0]);
+    }
     links.elems = NULL;
     links.count = 0;
   }
@@ -1438,7 +1120,19 @@ void build(Cstr_Array comp_flags) {
     exe_deps.elems = NULL;
     exe_deps.count = 0;
   }
-  INFO("NOBUILD took ... %f sec", ((double)clock() - start) / CLOCKS_PER_SEC);
+  struct rusage r;
+  struct rusage r2;
+  getrusage(RUSAGE_SELF, &r);
+  main_sutime += r.ru_utime.tv_usec;
+  main_utime += r.ru_utime.tv_sec;
+  getrusage(RUSAGE_CHILDREN, &r2);
+  cmd_sutime += r2.ru_utime.tv_usec;
+  cmd_utime += r2.ru_utime.tv_sec;
+
+  INFO("NOBUILD took ... %ld usec",
+       (long int)(main_utime * 10000000L + main_sutime));
+  INFO("CMDS took ... %ld usec",
+       (long int)(cmd_utime * 10000000L + cmd_sutime));
   RESULTS();
 }
 
@@ -1468,6 +1162,7 @@ void pid_wait(Pid pid) {
     if (waitpid(pid, &wstatus, 0) < 0) {
       PANIC("could not wait on command (pid %d): %d", pid, errno);
     }
+
     if (WIFEXITED(wstatus)) {
       int exit_status = WEXITSTATUS(wstatus);
       if (exit_status != 0) {

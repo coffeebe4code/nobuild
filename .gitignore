@@ -8,3 +8,11 @@ deps
 obj
 vend
 
+
+# nobuild
+nobuild
+target
+deps
+obj
+vend
+
