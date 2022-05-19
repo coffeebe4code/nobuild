@@ -1,4 +1,5 @@
 #define NOBUILD_IMPLEMENTATION
+#define WITH_MOCKING
 #include "../include/stuff.h"
 #include "../nobuild.h"
 #include <stdio.h>
